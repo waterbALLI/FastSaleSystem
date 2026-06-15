@@ -4,11 +4,15 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.shy.fast_sale_system.common.Result;
 import com.shy.fast_sale_system.mapper.ActivityMapper;
+import com.shy.fast_sale_system.mapper.GoodsImageMapper;
 import com.shy.fast_sale_system.mapper.GoodsMapper;
+import com.shy.fast_sale_system.mapper.GoodsReviewMapper;
 import com.shy.fast_sale_system.mapper.SeckillGoodsMapper;
 import com.shy.fast_sale_system.mapper.SeckillOrderMapper;
 import com.shy.fast_sale_system.pojo.Activity;
 import com.shy.fast_sale_system.pojo.Goods;
+import com.shy.fast_sale_system.pojo.GoodsImage;
+import com.shy.fast_sale_system.pojo.GoodsReview;
 import com.shy.fast_sale_system.pojo.SeckillGoods;
 import com.shy.fast_sale_system.pojo.SeckillOrder;
 import com.shy.fast_sale_system.service.PreHeatService;
@@ -47,6 +51,12 @@ public class AdminController {
 
     @Autowired
     private PreHeatService preHeatService;
+
+    @Autowired
+    private GoodsImageMapper goodsImageMapper;
+
+    @Autowired
+    private GoodsReviewMapper goodsReviewMapper;
 
     // ==================== 权限校验 ====================
 
@@ -209,6 +219,66 @@ public class AdminController {
         data.put("page", p.getCurrent());
         data.put("size", p.getSize());
         return Result.success(data);
+    }
+
+    // ==================== 商品图片管理 ====================
+
+    @GetMapping("/goods/{goodsId}/images")
+    public Result<List<GoodsImage>> listGoodsImages(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable Long goodsId) {
+        if (!checkAdmin(auth)) return unauth();
+        List<GoodsImage> list = goodsImageMapper.selectList(
+                new LambdaQueryWrapper<GoodsImage>()
+                        .eq(GoodsImage::getGoodsId, goodsId)
+                        .orderByAsc(GoodsImage::getSortOrder));
+        return Result.success(list);
+    }
+
+    @PostMapping("/goods/{goodsId}/images")
+    public Result<GoodsImage> addGoodsImage(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable Long goodsId,
+            @RequestBody GoodsImage image) {
+        if (!checkAdmin(auth)) return unauth();
+        image.setGoodsId(goodsId);
+        goodsImageMapper.insert(image);
+        return Result.success(image);
+    }
+
+    @DeleteMapping("/goods/images/{id}")
+    public Result<String> deleteGoodsImage(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable Long id) {
+        if (!checkAdmin(auth)) return unauth();
+        goodsImageMapper.deleteById(id);
+        return Result.success("删除成功");
+    }
+
+    // ==================== 评论管理 ====================
+
+    @GetMapping("/reviews")
+    public Result<Map<String, Object>> listReviews(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        if (!checkAdmin(auth)) return unauth();
+        Page<GoodsReview> p = new Page<>(page, size);
+        p = goodsReviewMapper.selectPage(p,
+                new LambdaQueryWrapper<GoodsReview>().orderByDesc(GoodsReview::getCreateTime));
+        Map<String, Object> data = new HashMap<>();
+        data.put("records", p.getRecords());
+        data.put("total", p.getTotal());
+        return Result.success(data);
+    }
+
+    @DeleteMapping("/reviews/{id}")
+    public Result<String> deleteReview(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable Long id) {
+        if (!checkAdmin(auth)) return unauth();
+        goodsReviewMapper.deleteById(id);
+        return Result.success("删除成功");
     }
 
     // ==================== 手动预热 ====================

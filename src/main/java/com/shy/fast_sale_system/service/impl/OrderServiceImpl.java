@@ -19,6 +19,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.concurrent.TimeUnit;
 
 @Service
@@ -125,5 +126,38 @@ public class OrderServiceImpl implements OrderService {
                 lock.unlock();
             }
         }
+    }
+
+    @Override
+    public String payOrder(Long orderId, Long userId) {
+        SeckillOrder order = seckillOrderMapper.selectById(orderId);
+        if (order == null) {
+            return "订单不存在";
+        }
+        if (!order.getUserId().equals(userId)) {
+            return "订单不属于当前用户";
+        }
+        if (order.getOrderStatus() != 0) {
+            if (order.getOrderStatus() == 1) return "订单已支付，无需重复支付";
+            if (order.getOrderStatus() == 2) return "订单已取消，无法支付";
+            return "订单状态异常，无法支付";
+        }
+        // 支付期限 15 分钟
+        LocalDateTime createTime = order.getCreateTime();
+        if (createTime == null || LocalDateTime.now().isAfter(createTime.plusMinutes(15))) {
+            // 超时 → 自动取消
+            order.setOrderStatus(2);
+            seckillOrderMapper.updateById(order);
+            // 回滚 Redis 库存
+            redisTemplate.opsForValue().increment("goods:stock:" + order.getGoodsId(), 1);
+            log.warn("[支付超时] orderId={}, 已自动取消并回滚库存", orderId);
+            return "支付已超时，订单已取消";
+        }
+        order.setOrderStatus(1); // 已支付
+        order.setPayTime(LocalDateTime.now());
+        seckillOrderMapper.updateById(order);
+        log.info("✅ [支付成功] orderId={}, userId={}, goodsId={}, price={}",
+                orderId, userId, order.getGoodsId(), order.getSeckillPrice());
+        return "✅ 支付成功";
     }
 }

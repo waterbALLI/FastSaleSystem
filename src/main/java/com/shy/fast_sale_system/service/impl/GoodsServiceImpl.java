@@ -2,10 +2,15 @@ package com.shy.fast_sale_system.service.impl;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.shy.fast_sale_system.mapper.GoodsImageMapper;
 import com.shy.fast_sale_system.mapper.GoodsMapper;
+import com.shy.fast_sale_system.mapper.GoodsReviewMapper;
 import com.shy.fast_sale_system.mapper.SeckillGoodsMapper;
 import com.shy.fast_sale_system.pojo.Activity;
 import com.shy.fast_sale_system.pojo.Goods;
+import com.shy.fast_sale_system.pojo.GoodsImage;
+import com.shy.fast_sale_system.pojo.GoodsReview;
 import com.shy.fast_sale_system.pojo.SeckillGoods;
 import com.shy.fast_sale_system.service.ActivityService;
 import com.shy.fast_sale_system.service.GoodsService;
@@ -14,6 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -23,6 +29,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 @Service
+@Slf4j
 public class GoodsServiceImpl implements GoodsService {
 
     @Autowired
@@ -36,6 +43,12 @@ public class GoodsServiceImpl implements GoodsService {
 
     @Autowired
     private ActivityService activityService;
+
+    @Autowired
+    private GoodsImageMapper goodsImageMapper;
+
+    @Autowired
+    private GoodsReviewMapper goodsReviewMapper;
 
     // 定义本地缓存：最大容量1000，写入后1分钟过期
     private Cache<Long, Goods> localCache = Caffeine.newBuilder()
@@ -117,9 +130,26 @@ public class GoodsServiceImpl implements GoodsService {
 
         // 查询秒杀价格
         SeckillGoods sg = seckillGoodsMapper.selectOne(
-                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SeckillGoods>()
+                new LambdaQueryWrapper<SeckillGoods>()
                         .eq(SeckillGoods::getGoodsId, goodsId));
         vo.setSeckillPrice(sg != null ? sg.getSeckillPrice() : goods.getGoodsPrice());
+
+        // 填充商品图片
+        List<GoodsImage> images = goodsImageMapper.selectList(
+                new LambdaQueryWrapper<GoodsImage>()
+                        .eq(GoodsImage::getGoodsId, goodsId)
+                        .orderByAsc(GoodsImage::getSortOrder));
+        vo.setImages(images);
+
+        // 填充最新评论
+        List<GoodsReview> reviews = goodsReviewMapper.selectList(
+                new LambdaQueryWrapper<GoodsReview>()
+                        .eq(GoodsReview::getGoodsId, goodsId)
+                        .orderByDesc(GoodsReview::getCreateTime)
+                        .last("LIMIT 20"));
+        vo.setReviews(reviews);
+        vo.setReviewCount(Math.toIntExact(goodsReviewMapper.selectCount(
+                new LambdaQueryWrapper<GoodsReview>().eq(GoodsReview::getGoodsId, goodsId))));
 
         // 填充活动信息
         if (sg != null) {

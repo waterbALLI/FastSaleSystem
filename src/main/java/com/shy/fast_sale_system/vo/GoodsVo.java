@@ -1,10 +1,13 @@
 package com.shy.fast_sale_system.vo;
 
 import com.shy.fast_sale_system.pojo.Goods;
+import com.shy.fast_sale_system.pojo.GoodsImage;
+import com.shy.fast_sale_system.pojo.GoodsReview;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -33,4 +36,13 @@ public class GoodsVo extends Goods {
 
     /** 每人限购数量 */
     private Integer limitPerUser;
+
+    /** 商品图片列表 */
+    private List<GoodsImage> images;
+
+    /** 最新评论列表 */
+    private List<GoodsReview> reviews;
+
+    /** 评论总数 */
+    private Integer reviewCount;
 }

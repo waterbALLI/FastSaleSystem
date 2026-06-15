@@ -10,7 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * 简单熔断器：基于失败计数的熔断/半开/闭合状态机
  *
  * 使用方式：
- *   if (!circuitBreaker.isAvailable("rabbitmq")) { /* 降级处理 */ }
+ *   if (!circuitBreaker.isAvailable("rabbitmq")) { // 降级处理 }
  *   try { ... circuitBreaker.recordSuccess("rabbitmq"); }
  *   catch (Exception e) { circuitBreaker.recordFailure("rabbitmq"); }
  */

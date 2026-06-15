@@ -130,6 +130,68 @@
         .empty-state .icon { font-size:48px; margin-bottom:12px; }
         .empty-state .text { font-size:14px; }
 
+        /* ===== Detail Page ===== */
+        .detail-header {
+            display:flex; align-items:center; gap:16px; padding:12px 16px;
+            background:#fff; position:sticky; top:0; z-index:101;
+            border-bottom:1px solid #eee;
+        }
+        .detail-header .back-btn { font-size:20px; cursor:pointer; color:#333; padding:4px; }
+        .detail-header .title { font-size:16px; font-weight:600; }
+        .carousel {
+            position:relative; width:100%; height:0; padding-bottom:100%;
+            background:#1a1a2e; overflow:hidden; cursor:grab; user-select:none;
+        }
+        .carousel video, .carousel img {
+            position:absolute; top:0; left:0; width:100%; height:100%; object-fit:contain;
+            transition:transform 0.3s;
+        }
+        .carousel .dots {
+            position:absolute; bottom:12px; left:50%; transform:translateX(-50%);
+            display:flex; gap:6px; z-index:2;
+        }
+        .carousel .dots .dot {
+            width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,0.4);
+            transition:all 0.2s;
+        }
+        .carousel .dots .dot.active { background:#fff; width:20px; border-radius:4px; }
+        .carousel .nav-btn {
+            position:absolute; top:50%; transform:translateY(-50%); z-index:2;
+            width:36px; height:36px; border-radius:50%; background:rgba(0,0,0,0.3); color:#fff;
+            display:flex; align-items:center; justify-content:center; cursor:pointer;
+            font-size:18px; border:none;
+        }
+        .carousel .nav-btn.left { left:8px; }
+        .carousel .nav-btn.right { right:8px; }
+        .detail-section {
+            background:#fff; border-radius:12px; padding:16px 20px; margin:12px 0;
+            box-shadow:0 1px 3px rgba(0,0,0,0.04);
+        }
+        .detail-section .s-title {
+            font-size:14px; font-weight:700; margin-bottom:12px;
+            display:flex; align-items:center; gap:6px;
+        }
+        .review-item {
+            padding:12px 0; border-bottom:1px solid #f5f5f5;
+            display:flex; gap:12px;
+        }
+        .review-item .r-avatar {
+            width:36px; height:36px; border-radius:50%;
+            background:linear-gradient(135deg,#e03a3a,#ff6b81);
+            color:#fff; display:flex; align-items:center; justify-content:center;
+            font-size:14px; font-weight:700; flex-shrink:0;
+        }
+        .review-item .r-body { flex:1; }
+        .review-item .r-name { font-size:13px; font-weight:600; margin-bottom:2px; }
+        .review-item .r-stars { color:#f7ba2a; font-size:12px; margin-bottom:4px; }
+        .review-item .r-content { font-size:13px; color:#333; line-height:1.6; }
+        .review-item .r-time { font-size:11px; color:#bbb; margin-top:4px; }
+        .tag-row { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+        .info-tag {
+            font-size:11px; padding:3px 10px; border-radius:4px;
+            background:#f5f5f7; color:#666;
+        }
+
         [v-cloak] { display:none !important; }
     </style>
 </head>
@@ -176,19 +238,31 @@
             <div class="banner">
                 <div class="bn-text">{{ countdownLabel }}</div>
                 <div class="bn-timer">
-                    <span class="block">{{ hh }}</span><span class="sep">:</span>
-                    <span class="block">{{ mm }}</span><span class="sep">:</span>
-                    <span class="block">{{ ss }}</span>
+                    <template v-if="activityStatus === 0">
+                        <span class="block">{{ hh }}</span><span class="sep">:</span>
+                        <span class="block">{{ mm }}</span><span class="sep">:</span>
+                        <span class="block">{{ ss }}</span>
+                    </template>
+                    <template v-else-if="activityStatus === 1">
+                        <span class="block">{{ endHh }}</span><span class="sep">:</span>
+                        <span class="block">{{ endMm }}</span><span class="sep">:</span>
+                        <span class="block">{{ endSs }}</span>
+                    </template>
+                    <template v-else>
+                        <span class="block">00</span><span class="sep">:</span>
+                        <span class="block">00</span><span class="sep">:</span>
+                        <span class="block">00</span>
+                    </template>
                 </div>
             </div>
 
             <div v-if="loading" style="text-align:center;padding:60px;color:#999;">加载商品中...</div>
             <div v-else class="product-grid">
                 <div v-for="g in goodsList" :key="g.id" class="p-card">
-                    <div class="img-area">
+                    <div class="img-area" @click="openDetail(g)" style="cursor:pointer;">
                         <span class="tag">秒杀</span>
                         <span class="stock-badge">剩 {{ g.stockCount || 0 }} 件</span>
-                        <img src="https://images.unsplash.com/photo-1542291026-7eec264c27ff?q=80&w=400&auto=format&fit=crop" alt="">
+                        <img :src="g.goodsImg || (g.images && g.images[0] ? g.images[0].imageUrl : 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?q=80&w=400&auto=format&fit=crop')" alt="">
                     </div>
                     <div class="body">
                         <div class="name">{{ g.goodsName }}</div>
@@ -248,9 +322,14 @@
                         </el-table-column>
                         <el-table-column label="状态" width="100">
                             <template #default="s">
-                                <el-tag :type="s.row.orderStatus===0?'warning':'success'" size="small">
-                                    {{ s.row.orderStatus===0?'待支付':s.row.orderStatus===1?'已支付':'其他' }}
+                                <el-tag :type="s.row.orderStatus===0?'warning':s.row.orderStatus===1?'success':'info'" size="small">
+                                    {{ s.row.orderStatus===0?'待支付':s.row.orderStatus===1?'已支付':s.row.orderStatus===2?'已取消':'已退款' }}
                                 </el-tag>
+                            </template>
+                        </el-table-column>
+                        <el-table-column label="操作" width="80">
+                            <template #default="s">
+                                <el-button v-if="s.row.orderStatus===0" size="small" type="danger" @click="doPayOrder(s.row.id)">支付</el-button>
                             </template>
                         </el-table-column>
                         <el-table-column label="时间">
@@ -282,9 +361,14 @@
                         </el-table-column>
                         <el-table-column label="状态" width="100">
                             <template #default="s">
-                                <el-tag :type="s.row.orderStatus===0?'warning':'success'" size="small">
-                                    {{ s.row.orderStatus===0?'待支付':s.row.orderStatus===1?'已支付':'已取消' }}
+                                <el-tag :type="s.row.orderStatus===0?'warning':s.row.orderStatus===1?'success':'info'" size="small">
+                                    {{ s.row.orderStatus===0?'待支付':s.row.orderStatus===1?'已支付':s.row.orderStatus===2?'已取消':'已退款' }}
                                 </el-tag>
+                            </template>
+                        </el-table-column>
+                        <el-table-column label="操作" width="80">
+                            <template #default="s">
+                                <el-button v-if="s.row.orderStatus===0" size="small" type="danger" @click="doPayOrder(s.row.id)">支付</el-button>
                             </template>
                         </el-table-column>
                         <el-table-column label="创建时间">
@@ -295,6 +379,102 @@
                 <div v-else class="empty-state">
                     <div class="icon">📭</div>
                     <div class="text">暂无订单记录</div>
+                </div>
+            </div>
+        </template>
+
+        <!-- ========== PAGE: Detail ========== -->
+        <template v-if="page==='detail' && detailGoods">
+            <div class="detail-header">
+                <span class="back-btn" @click="page='home'">←</span>
+                <span class="title">{{ detailGoods.goodsName }}</span>
+            </div>
+
+            <!-- Image Carousel -->
+            <div class="carousel"
+                 @touchstart="onTouchStart" @touchend="onTouchEnd"
+                 @mousedown="onTouchStart" @mouseup="onTouchEnd">
+                <template v-if="detailGoods.videoUrl && carouselIdx === 0">
+                    <video :src="detailGoods.videoUrl" controls autoplay muted playsinline></video>
+                </template>
+                <template v-else>
+                    <img :src="detailImages[carouselIdx].imageUrl" alt="">
+                </template>
+                <div class="dots" v-if="detailImages.length > 1">
+                    <span v-for="(img,i) in detailImages" :key="i" class="dot" :class="{active:i===carouselIdx}"></span>
+                </div>
+                <button v-if="detailImages.length>1" class="nav-btn left" @click.stop="carouselPrev">‹</button>
+                <button v-if="detailImages.length>1" class="nav-btn right" @click.stop="carouselNext">›</button>
+            </div>
+
+            <!-- Price + Info -->
+            <div class="detail-section">
+                <div class="prices" style="margin-bottom:8px;">
+                    <span class="cur" style="font-size:28px;">{{ fmt(detailGoods.seckillPrice) }}</span>
+                    <span class="old" style="font-size:14px;">¥{{ fmt(detailGoods.goodsPrice) }}</span>
+                    <span class="disc" v-if="detailGoods.seckillPrice && detailGoods.goodsPrice">{{ discountPct(detailGoods) }}% OFF</span>
+                </div>
+                <div style="font-size:18px;font-weight:600;margin-bottom:6px;">{{ detailGoods.goodsName }}</div>
+                <div style="font-size:13px;color:#999;margin-bottom:8px;">{{ detailGoods.goodsTitle || '暂无描述' }}</div>
+                <div class="tag-row">
+                    <span class="info-tag" v-if="detailGoods.brand">🏷 {{ detailGoods.brand }}</span>
+                    <span class="info-tag" v-if="detailGoods.shippingLocation">📍 {{ detailGoods.shippingLocation }}</span>
+                    <span class="info-tag">📦 剩 {{ detailGoods.stockCount||0 }} 件</span>
+                </div>
+            </div>
+
+            <!-- Countdown -->
+            <div class="detail-section">
+                <div style="display:flex;gap:24px;align-items:center;">
+                    <div style="flex:1;text-align:center;">
+                        <div style="font-size:11px;color:#999;margin-bottom:4px;">
+                            {{ detailGoods.activityStatus===0 ? '距离开抢' : detailGoods.activityStatus===1 ? '距离结束' : '已结束' }}
+                        </div>
+                        <div style="font-size:22px;font-weight:800;color:#e03a3a;font-family:monospace;">
+                            {{ detailGoods.activityStatus===0 ? (hh+':'+mm+':'+ss) : detailGoods.activityStatus===1 ? endHh+':'+endMm+':'+endSs : '--:--:--' }}
+                        </div>
+                    </div>
+                    <div style="flex:1;text-align:center;border-left:1px solid #eee;">
+                        <div style="font-size:11px;color:#999;margin-bottom:4px;">剩余库存</div>
+                        <div style="font-size:22px;font-weight:800;color:#333;">{{ detailGoods.stockCount||0 }}</div>
+                        <div style="font-size:12px;color:#bbb;">/ {{ detailGoods.seckillStock||'--' }} 件</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Buy Button -->
+            <div style="padding:12px 20px;">
+                <button class="buy-btn" :class="btnCls(detailGoods)" :disabled="!canBuy(detailGoods)"
+                        @click="startBuy(detailGoods)" style="height:48px;font-size:16px;">
+                    {{ btnLbl(detailGoods) }}
+                </button>
+            </div>
+
+            <!-- Goods Detail Description -->
+            <div class="detail-section" v-if="detailGoods.goodsDetail">
+                <div class="s-title">📦 商品详情</div>
+                <div style="font-size:13px;color:#666;line-height:1.8;white-space:pre-wrap;">{{ detailGoods.goodsDetail }}</div>
+            </div>
+
+            <!-- Reviews -->
+            <div class="detail-section">
+                <div class="s-title">⭐ 用户评价 ({{ detailGoods.reviewCount || 0 }})</div>
+                <template v-if="detailGoods.reviews && detailGoods.reviews.length>0">
+                    <div v-for="r in detailGoods.reviews" :key="r.id" class="review-item">
+                        <div class="r-avatar">{{ (r.userId||'U').toString().charAt(0) }}</div>
+                        <div class="r-body">
+                            <div class="r-name">用户{{ r.userId }}</div>
+                            <div class="r-stars">{{ '★'.repeat(r.rating||5) }}{{ '☆'.repeat(5-(r.rating||5)) }}</div>
+                            <div class="r-content">{{ r.content }}</div>
+                            <div class="r-time">{{ r.createTime }}</div>
+                        </div>
+                    </div>
+                    <div style="text-align:center;margin-top:12px;" v-if="(detailGoods.reviewCount||0) > (detailGoods.reviews||[]).length">
+                        <el-button type="text" @click="loadMoreReviews">查看更多评价 →</el-button>
+                    </div>
+                </template>
+                <div v-else style="text-align:center;padding:24px;color:#bbb;font-size:13px;">
+                    暂无评价，抢购后快来发表第一条评价吧！
                 </div>
             </div>
         </template>
@@ -363,11 +543,19 @@
     </el-dialog>
 
     <!-- ===== Result Dialog ===== -->
-    <el-dialog v-model="showResult" title="" width="340px" center :show-close="false" append-to-body>
+    <el-dialog v-model="showResult" title="" width="360px" center :show-close="false" append-to-body>
         <div style="text-align:center;padding:20px 0;">
             <div style="font-size:52px;margin-bottom:12px;">{{ resultIcon }}</div>
             <p style="font-size:16px;font-weight:600;">{{ resultMsg }}</p>
             <p v-if="resultOid" style="font-size:12px;color:#999;margin-top:8px;">订单号：{{ resultOid }}</p>
+            <!-- 支付倒计时 -->
+            <div v-if="payOrderId && payCountdown !== '已超时'" style="margin-top:16px;background:#fef0f0;border-radius:8px;padding:12px;">
+                <div style="font-size:12px;color:#e03a3a;margin-bottom:4px;">⏱ 请在 {{ payCountdown }} 内完成支付</div>
+                <el-button type="danger" size="small" style="margin-top:4px;" @click="doPay">💳 立即支付</el-button>
+            </div>
+            <div v-if="payOrderId && payCountdown === '已超时'" style="margin-top:16px;color:#999;font-size:12px;">
+                订单已超时取消
+            </div>
         </div>
         <template #footer>
             <el-button type="primary" @click="showResult=false">确定</el-button>
@@ -458,15 +646,27 @@
                     mm.value = String(Math.floor((t % 3600) / 60)).padStart(2, '0');
                     ss.value = String(t % 60).padStart(2, '0');
                 } else if (now < endMs) {
-                    // 进行中
+                    // 进行中 → 显示结束倒计时
                     activityStatus.value = 1;
-                    countdownLabel.value = '秒杀进行中 🔥';
+                    countdownLabel.value = '距离结束';
                     hh.value = '00'; mm.value = '00'; ss.value = '00';
                 } else {
                     // 已结束
                     activityStatus.value = 2;
                     countdownLabel.value = '秒杀已结束';
                     hh.value = '00'; mm.value = '00'; ss.value = '00';
+                }
+                // 同步更新结束倒计时
+                if (saleEnd.value) {
+                    const endDiff = endMs - now;
+                    if (endDiff > 0) {
+                        const et = Math.floor(endDiff / 1000);
+                        endHh.value = String(Math.floor(et / 3600)).padStart(2, '0');
+                        endMm.value = String(Math.floor((et % 3600) / 60)).padStart(2, '0');
+                        endSs.value = String(et % 60).padStart(2, '0');
+                    } else {
+                        endHh.value = '00'; endMm.value = '00'; endSs.value = '00';
+                    }
                 }
             };
 
@@ -483,8 +683,10 @@
                             saleEnd.value = list[0].activityEndTime;
                             tick(); // 立即计算状态
                         }
-                        // 交叉比对已有订单，标记已购买的商品
-                        const boughtIds = new Set(orders.value.map(o=>o.goodsId));
+                        // 交叉比对已有订单，仅未取消/未退款标记为已购买
+                        const boughtIds = new Set(
+                            orders.value.filter(o=>o.orderStatus===0||o.orderStatus===1).map(o=>o.goodsId)
+                        );
                         goodsList.value=list.map(g=>({
                             ...g,
                             _state: boughtIds.has(g.id) ? 'bought' : 'ready'
@@ -568,15 +770,134 @@
                     try {
                         const r = await api.get('/order/result',{params:{goodsId:g.id}});
                         if(r.data.code!==200) return;
-                        const v=r.data.data;
-                        if(v>0){ clearInterval(pollTimer); g._state='ready'; g.stockCount=Math.max(0,(g.stockCount||0)-1); showResultDialog('🎉','抢购成功！',v); loadOrders(); loadGoods(); }
-                        else if(v===-1){ clearInterval(pollTimer); g._state='ready'; showResultDialog('😢','抢购失败，请重试',null); loadGoods(); }
+                        const v = String(r.data.data); // 字符串，避免 JS 大数精度丢失
+                        if(v !== '0' && v !== '-1' && v !== '-2'){
+                            // 正数 = 订单号（字符串）
+                            clearInterval(pollTimer); g._state='bought';
+                            g.stockCount=Math.max(0,(g.stockCount||0)-1);
+                            payOrderId.value=v; payDeadline.value=Date.now()+15*60*1000;
+                            startPayTimer();
+                            showResultDialog('🎉','抢购成功！',v);
+                            loadOrders(); loadGoods();
+                        }
+                        else if(v === '-1'){ clearInterval(pollTimer); g._state='ready'; showResultDialog('😢','抢购失败，请重试',null); loadGoods(); }
+                        else if(v === '-2'){ clearInterval(pollTimer); g._state='ready'; showResultDialog('⏰','支付超时，订单已取消',null); loadGoods(); }
                     } catch {}
                 }, 500);
             };
 
+            // ── Payment ──
+            const payOrderId = ref(null);
+            const payDeadline = ref(null);
+            const payCountdown = ref('');
+            let payTimer = null;
+
+            const startPayTimer = () => {
+                if (payTimer) clearInterval(payTimer);
+                payTimer = setInterval(() => {
+                    const d = payDeadline.value - Date.now();
+                    if (d <= 0) {
+                        payCountdown.value = '已超时';
+                        clearInterval(payTimer);
+                        return;
+                    }
+                    const m = Math.floor(d / 60000);
+                    const s = Math.floor((d % 60000) / 1000);
+                    payCountdown.value = m + '分' + String(s).padStart(2, '0') + '秒';
+                }, 200);
+            };
+
+            const doPay = async () => {
+                if (!payOrderId.value) return;
+                await payOrderById(payOrderId.value);
+                showResult.value = false;
+                payOrderId.value = null;
+            };
+            const doPayOrder = async (orderId) => {
+                await payOrderById(orderId);
+                loadOrders();
+                loadGoods();
+            };
+            const payOrderById = async (orderId) => {
+                try {
+                    const r = await api.post('/order/pay/' + orderId);
+                    if (r.data.code === 200) {
+                        ElementPlus.ElMessage.success(r.data.data);
+                        loadOrders();
+                    } else {
+                        ElementPlus.ElMessage.error(r.data.message || '支付失败');
+                    }
+                } catch { ElementPlus.ElMessage.error('支付请求失败'); }
+            };
+
             const showResult=ref(false); const resultIcon=ref(''); const resultMsg=ref(''); const resultOid=ref(null);
             const showResultDialog = (icon,msg,oid) => { resultIcon.value=icon; resultMsg.value=msg; resultOid.value=oid; showResult.value=true; };
+
+            // ── Detail Page ──
+            const detailGoods = ref(null);
+            const detailImages = ref([]);
+            const carouselIdx = ref(0);
+            let touchStartX = 0;
+
+            const openDetail = async (g) => {
+                page.value = 'detail';
+                detailGoods.value = { ...g };
+                carouselIdx.value = 0;
+                // 如果列表数据已有 images 则直接用，否则异步加载完整详情
+                if (g.images && g.images.length > 0) {
+                    detailImages.value = g.images;
+                }
+                // 异步加载完整详情
+                try {
+                    const r = await api.get('/goods/detail', { params: { goodsId: g.id } });
+                    if (r.data.code === 200) {
+                        const d = r.data.data;
+                        d._state = detailGoods.value._state || 'ready';
+                        detailGoods.value = d;
+                        if (d.images && d.images.length > 0) {
+                            detailImages.value = d.images;
+                        } else if (d.goodsImg) {
+                            detailImages.value = [{ imageUrl: d.goodsImg }];
+                        } else {
+                            detailImages.value = [{ imageUrl: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?q=80&w=400&auto=format&fit=crop' }];
+                        }
+                    }
+                } catch {}
+            };
+
+            const carouselPrev = () => {
+                if (detailImages.value.length <= 1) return;
+                carouselIdx.value = (carouselIdx.value - 1 + detailImages.value.length) % detailImages.value.length;
+            };
+            const carouselNext = () => {
+                if (detailImages.value.length <= 1) return;
+                carouselIdx.value = (carouselIdx.value + 1) % detailImages.value.length;
+            };
+            const onTouchStart = e => {
+                const t = e.touches ? e.touches[0] : e;
+                touchStartX = t.clientX;
+            };
+            const onTouchEnd = e => {
+                const t = e.changedTouches ? e.changedTouches[0] : e;
+                const dx = t.clientX - touchStartX;
+                if (Math.abs(dx) > 50) {
+                    dx > 0 ? carouselPrev() : carouselNext();
+                }
+            };
+            const loadMoreReviews = async () => {
+                if (!detailGoods.value) return;
+                try {
+                    const r = await api.get('/goods/reviews', {
+                        params: { goodsId: detailGoods.value.id, page: 1, size: 50 }
+                    });
+                    if (r.data.code === 200 && r.data.data.records) {
+                        detailGoods.value.reviews = r.data.data.records;
+                    }
+                } catch {}
+            };
+
+            // 结束倒计时
+            const endHh = ref('00'), endMm = ref('00'), endSs = ref('00');
 
             const initData = async () => {
                 await tryRestore();
@@ -584,7 +905,7 @@
                 await loadGoods();
             };
             onMounted(() => { tick(); cdTimer=setInterval(tick,200); initData(); });
-            onUnmounted(() => { clearInterval(cdTimer); if(pollTimer) clearInterval(pollTimer); });
+            onUnmounted(() => { clearInterval(cdTimer); if(pollTimer) clearInterval(pollTimer); if(payTimer) clearInterval(payTimer); });
 
             return {
                 user,token,showLogin,showRegister,authLoading,loginForm,regForm,
@@ -596,6 +917,9 @@
                 fmt,discountPct,stockPct,stockCls,canBuy,btnCls,btnLbl,
                 showCaptcha,captchaText,captchaAnswer,startBuy,refreshCaptcha,submitCaptcha,
                 showResult,resultIcon,resultMsg,resultOid,
+                payOrderId,payCountdown,doPay,doPayOrder,
+                detailGoods,detailImages,carouselIdx,openDetail,carouselPrev,carouselNext,
+                onTouchStart,onTouchEnd,loadMoreReviews,endHh,endMm,endSs,
             };
         }
     }).use(ElementPlus).mount('#app');

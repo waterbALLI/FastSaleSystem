@@ -9,4 +9,12 @@ public interface OrderService {
      * @return 订单ID（>0 成功）；-1 失败；0 排队中
      */
     long seckill(User user, GoodsVo goods);
+
+    /**
+     * 支付订单
+     * @param orderId 订单ID
+     * @param userId  当前用户ID（校验归属）
+     * @return 支付结果描述
+     */
+    String payOrder(Long orderId, Long userId);
 }

@@ -27,4 +27,15 @@ public class Goods {
 
     @TableField("is_deleted")
     private Integer isDeleted;
+
+    /** 品牌 */
+    private String brand;
+
+    /** 发货地 */
+    @TableField("shipping_location")
+    private String shippingLocation;
+
+    /** 视频URL（最多一个） */
+    @TableField("video_url")
+    private String videoUrl;
 }

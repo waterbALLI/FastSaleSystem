@@ -198,7 +198,7 @@ public class OrderController {
     // ==================== 结果轮询 ====================
 
     @GetMapping("/result")
-    public Result<Integer> getResult(@RequestParam("goodsId") Long goodsId) {
+    public Result<String> getResult(@RequestParam("goodsId") Long goodsId) {
         Long userId = AuthContext.getUserId();
         if (userId == null) return Result.error("请先登录");
 
@@ -206,13 +206,11 @@ public class OrderController {
         Object result = redisTemplate.opsForValue().get(resultKey);
 
         if (result == null) {
-            return Result.success(0);
+            return Result.success("0");
         }
 
-        int value = result instanceof Integer
-                ? (Integer) result
-                : Integer.parseInt(result.toString());
-
+        // 转为字符串返回，避免 JavaScript 精度丢失（Snowflake ID > 2^53）
+        String value = result.toString();
         log.info("[轮询结果] userId={}, goodsId={}, result={}", userId, goodsId, value);
         return Result.success(value);
     }
@@ -252,6 +250,22 @@ public class OrderController {
         if (value == -1) return Result.error("❌ 下单失败（详见服务端日志）");
         if (value == 0) return Result.success("⏳ 排队中（不应该出现）");
         return Result.error("未知结果=" + value);
+    }
+
+    // ==================== 支付接口 ====================
+
+    @PostMapping("/pay/{orderId}")
+    public Result<String> pay(@PathVariable Long orderId) {
+        Long userId = AuthContext.getUserId();
+        if (userId == null) return Result.error("请先登录");
+
+        try {
+            String msg = orderService.payOrder(orderId, userId);
+            return msg.startsWith("✅") ? Result.success(msg) : Result.error(msg);
+        } catch (Exception e) {
+            log.error("[支付异常] orderId={}, userId={}", orderId, userId, e);
+            return Result.error("支付失败: " + e.getMessage());
+        }
     }
 
     // ==================== 工具方法（供 DataInitializer / rollback 调用） ====================

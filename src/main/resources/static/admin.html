@@ -42,6 +42,7 @@
             <a :class="{active:tab==='activities'}" @click="tab='activities'">活动管理</a>
             <a :class="{active:tab==='seckill'}" @click="tab='seckill'">秒杀商品</a>
             <a :class="{active:tab==='orders'}" @click="tab='orders'">订单管理</a>
+            <a :class="{active:tab==='reviews'}" @click="tab='reviews'">评论管理</a>
             <a :class="{active:tab==='metrics'}" @click="tab='metrics'">监控指标</a>
         </nav>
         <div class="header-right">
@@ -80,11 +81,26 @@
                         <template #default="s">
                             <el-button size="small" @click="openGoodsDialog(s.row)">编辑</el-button>
                             <el-button size="small" type="danger" @click="deleteGoods(s.row.id)">删除</el-button>
+                            <el-button size="small" @click="openImgMgr(s.row)">图片</el-button>
                         </template>
                     </el-table-column>
                 </el-table>
             </div>
         </template>
+
+        <!-- Image Manager Dialog -->
+        <el-dialog v-model="showImgDlg" title="商品图片管理" width="500px" append-to-body>
+            <div style="margin-bottom:12px;display:flex;gap:8px;">
+                <el-input v-model="newImgUrl" placeholder="输入图片URL" />
+                <el-button type="danger" @click="doAddImage" :disabled="!newImgUrl">添加</el-button>
+            </div>
+            <div v-if="imgList.length===0" style="text-align:center;color:#bbb;padding:24px;">暂无图片</div>
+            <div v-for="img in imgList" :key="img.id" style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid #f5f5f5;">
+                <img :src="img.imageUrl" style="width:60px;height:60px;object-fit:cover;border-radius:6px;" />
+                <span style="flex:1;font-size:12px;color:#666;word-break:break-all;">{{ img.imageUrl }}</span>
+                <el-button size="small" type="danger" @click="doDeleteImage(img.id)">删除</el-button>
+            </div>
+        </el-dialog>
 
         <!-- Tab: Activities -->
         <template v-if="authed && tab==='activities'">
@@ -174,6 +190,33 @@
             </div>
         </template>
 
+        <!-- Tab: Reviews -->
+        <template v-if="authed && tab==='reviews'">
+            <div class="card">
+                <h3>💬 评论管理</h3>
+                <el-table :data="reviewList" style="width:100%;" v-loading="reviewLoading">
+                    <el-table-column prop="id" label="ID" width="60" />
+                    <el-table-column prop="goodsId" label="商品ID" width="80" />
+                    <el-table-column prop="userId" label="用户ID" width="80" />
+                    <el-table-column label="评分" width="80">
+                        <template #default="s">{{ '★'.repeat(s.row.rating||5) }}</template>
+                    </el-table-column>
+                    <el-table-column prop="content" label="内容" min-width="160" />
+                    <el-table-column label="时间" width="160">
+                        <template #default="s">{{ s.row.createTime }}</template>
+                    </el-table-column>
+                    <el-table-column label="操作" width="80">
+                        <template #default="s">
+                            <el-button size="small" type="danger" @click="deleteReview(s.row.id)">删除</el-button>
+                        </template>
+                    </el-table-column>
+                </el-table>
+                <el-pagination style="margin-top:16px;justify-content:flex-end;"
+                    layout="prev,pager,next" :total="reviewTotal" v-model:current-page="reviewPageNum"
+                    @current-change="loadReviews" />
+            </div>
+        </template>
+
         <!-- Tab: Metrics -->
         <template v-if="authed && tab==='metrics'">
             <div class="card">
@@ -209,17 +252,46 @@
     </div>
 
     <!-- === Goods Dialog === -->
-    <el-dialog v-model="showGoodsDlg" :title="editingGoods.id?'编辑商品':'新增商品'" width="500px" append-to-body>
+    <el-dialog v-model="showGoodsDlg" :title="editingGoods.id?'编辑商品':'新增商品'" width="560px" append-to-body>
         <el-form :model="editingGoods" label-position="top">
             <el-form-item label="商品名称">
                 <el-input v-model="editingGoods.goodsName" />
             </el-form-item>
-            <el-form-item label="原价">
-                <el-input-number v-model="editingGoods.goodsPrice" :min="0" :precision="2" style="width:100%;" />
+            <el-form-item label="副标题/描述">
+                <el-input v-model="editingGoods.goodsTitle" />
             </el-form-item>
-            <el-form-item label="库存">
-                <el-input-number v-model="editingGoods.goodsStock" :min="0" style="width:100%;" />
+            <el-form-item label="主图URL">
+                <el-input v-model="editingGoods.goodsImg" placeholder="https://..." />
             </el-form-item>
+            <el-row :gutter="16">
+                <el-col :span="8">
+                    <el-form-item label="原价">
+                        <el-input-number v-model="editingGoods.goodsPrice" :min="0" :precision="2" style="width:100%;" />
+                    </el-form-item>
+                </el-col>
+                <el-col :span="8">
+                    <el-form-item label="库存">
+                        <el-input-number v-model="editingGoods.goodsStock" :min="0" style="width:100%;" />
+                    </el-form-item>
+                </el-col>
+                <el-col :span="8">
+                    <el-form-item label="品牌">
+                        <el-input v-model="editingGoods.brand" placeholder="如 Apple" />
+                    </el-form-item>
+                </el-col>
+            </el-row>
+            <el-row :gutter="16">
+                <el-col :span="12">
+                    <el-form-item label="发货地">
+                        <el-input v-model="editingGoods.shippingLocation" placeholder="如 广东深圳" />
+                    </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                    <el-form-item label="视频URL">
+                        <el-input v-model="editingGoods.videoUrl" placeholder="可选" />
+                    </el-form-item>
+                </el-col>
+            </el-row>
         </el-form>
         <template #footer>
             <el-button @click="showGoodsDlg=false">取消</el-button>
@@ -316,7 +388,7 @@
                 catch {} finally { goodsLoading.value = false; }
             };
             const openGoodsDialog = (row) => {
-                editingGoods.value = row ? { ...row } : { goodsName: '', goodsPrice: 0, goodsStock: 0 };
+                editingGoods.value = row ? { ...row } : { goodsName: '', goodsTitle: '', goodsImg: '', goodsPrice: 0, goodsStock: 0, brand: '', shippingLocation: '', videoUrl: '' };
                 showGoodsDlg.value = true;
             };
             const saveGoods = async () => {
@@ -412,6 +484,37 @@
                 catch {} finally { orderLoading.value = false; }
             };
 
+            // Image management
+            const showImgDlg = ref(false); const imgList = ref([]); const newImgUrl = ref('');
+            let imgGoodsId = null;
+            const openImgMgr = async (row) => {
+                imgGoodsId = row.id; showImgDlg.value = true; newImgUrl.value = '';
+                await loadImages();
+            };
+            const loadImages = async () => {
+                try { const r = await api.get('/admin/goods/' + imgGoodsId + '/images', { headers: authHeaders() }); if (r.data.code === 200) imgList.value = r.data.data; } catch {}
+            };
+            const doAddImage = async () => {
+                try { const r = await api.post('/admin/goods/' + imgGoodsId + '/images', { imageUrl: newImgUrl.value, sortOrder: imgList.value.length }, { headers: authHeaders() }); if (r.data.code === 200) { newImgUrl.value = ''; loadImages(); ElementPlus.ElMessage.success('已添加'); } } catch { ElementPlus.ElMessage.error('添加失败'); }
+            };
+            const doDeleteImage = async (id) => {
+                try { const r = await api.delete('/admin/goods/images/' + id, { headers: authHeaders() }); if (r.data.code === 200) { loadImages(); ElementPlus.ElMessage.success('已删除'); } } catch { ElementPlus.ElMessage.error('删除失败'); }
+            };
+
+            // Reviews management
+            const reviewList = ref([]); const reviewLoading = ref(false); const reviewTotal = ref(0); const reviewPageNum = ref(1);
+            const loadReviews = async () => {
+                reviewLoading.value = true;
+                try { const r = await api.get('/admin/reviews', { headers: authHeaders(), params: { page: reviewPageNum.value, size: 20 } }); if (r.data.code === 200) { reviewList.value = r.data.data.records; reviewTotal.value = r.data.data.total; } }
+                catch {} finally { reviewLoading.value = false; }
+            };
+            const deleteReview = async (id) => {
+                try { await ElementPlus.ElMessageBox.confirm('确认删除？', '提示', { type: 'warning' }); }
+                catch { return; }
+                try { const r = await api.delete('/admin/reviews/' + id, { headers: authHeaders() }); if (r.data.code === 200) { loadReviews(); ElementPlus.ElMessage.success('已删除'); } }
+                catch { ElementPlus.ElMessage.error('删除失败'); }
+            };
+
             // Preheat
             const preheating = ref(false);
             const doPreheat = async () => {
@@ -431,7 +534,7 @@
             };
 
             const loadAll = () => {
-                loadGoods(); loadActivities(); loadSeckill(); loadOrders(); loadMetrics(); loadHealth();
+                loadGoods(); loadActivities(); loadSeckill(); loadOrders(); loadReviews(); loadMetrics(); loadHealth();
             };
             onMounted(() => { if (authed.value) loadAll(); });
 
@@ -442,6 +545,8 @@
                 seckillList, sgLoading, showSgDlg, editingSg, openSeckillDialog, saveSeckill, deleteSeckill,
                 orderPage, orderLoading, orderPageNum, loadOrders,
                 preheating, doPreheat,
+                showImgDlg, imgList, newImgUrl, openImgMgr, doAddImage, doDeleteImage,
+                reviewList, reviewLoading, reviewTotal, reviewPageNum, loadReviews, deleteReview,
                 metrics, health, loadHealth,
             };
         }
