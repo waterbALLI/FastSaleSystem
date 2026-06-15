@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>秒杀专场 - Fast Sale</title>
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/element-plus"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: #f0f2f5; color: #2c3e50; min-height: 100vh;
+        }
+        .app-header {
+            background:#fff; border-bottom:1px solid #e8e8e8;
+            padding:0 40px; height:60px; display:flex; align-items:center;
+            box-shadow:0 1px 4px rgba(0,0,0,0.04);
+            position:sticky; top:0; z-index:100;
+        }
+        .app-header .logo { font-size:20px; font-weight:700; color:#e03a3a; margin-right:40px; cursor:pointer; }
+        .app-header nav { display:flex; gap:28px; }
+        .app-header nav a {
+            text-decoration:none; color:#606266; font-size:14px; padding:4px 0;
+            border-bottom:2px solid transparent; transition:all 0.15s; cursor:pointer;
+        }
+        .app-header nav a:hover, .app-header nav a.active { color:#e03a3a; border-bottom-color:#e03a3a; }
+        .header-right { margin-left:auto; display:flex; align-items:center; gap:16px; }
+
+        .main-container { max-width:1200px; margin:0 auto; padding:24px 40px; }
+        .section-title { font-size:18px; font-weight:700; margin-bottom:16px; }
+
+        /* ===== Banner ===== */
+        .banner {
+            background:linear-gradient(135deg, #1a1a2e, #16213e);
+            border-radius:12px; padding:20px 28px; margin-bottom:24px;
+            display:flex; align-items:center; justify-content:space-between; color:#fff;
+        }
+        .banner .bn-text { font-size:16px; opacity:0.8; }
+        .banner .bn-timer { display:flex; align-items:center; gap:6px; }
+        .banner .bn-timer .block {
+            background:rgba(255,255,255,0.1); border-radius:6px;
+            font-size:28px; font-weight:800; padding:4px 10px;
+            font-family:"SF Mono","Consolas",monospace;
+        }
+        .banner .bn-timer .sep { font-size:22px; opacity:0.4; }
+
+        /* ===== Product Grid ===== */
+        .product-grid {
+            display:grid; grid-template-columns: repeat(3, 1fr); gap:16px;
+        }
+        @media (max-width:1000px) { .product-grid { grid-template-columns:repeat(2,1fr); } }
+        @media (max-width:700px)  { .product-grid { grid-template-columns:1fr; } }
+
+        .p-card {
+            background:#fff; border-radius:12px; overflow:hidden;
+            box-shadow:0 1px 3px rgba(0,0,0,0.04);
+            transition:box-shadow 0.2s, transform 0.2s;
+        }
+        .p-card:hover { box-shadow:0 6px 20px rgba(0,0,0,0.08); transform:translateY(-2px); }
+        .p-card .img-area {
+            height:180px; background:linear-gradient(135deg,#f5f5f5,#e8e8e8);
+            display:flex; align-items:center; justify-content:center; position:relative;
+        }
+        .p-card .img-area .tag {
+            position:absolute; top:12px; left:12px;
+            background:#e03a3a; color:#fff; font-size:11px; font-weight:700;
+            padding:3px 10px; border-radius:4px;
+        }
+        .p-card .img-area .stock-badge {
+            position:absolute; bottom:12px; right:12px;
+            background:rgba(0,0,0,0.6); color:#fff; font-size:11px;
+            padding:2px 10px; border-radius:10px;
+        }
+        .p-card .img-area img { max-width:70%; max-height:70%; object-fit:contain; }
+        .p-card .body { padding:16px; }
+        .p-card .body .name { font-size:16px; font-weight:600; margin-bottom:4px; }
+        .p-card .body .id-sub { font-size:11px; color:#b0b0b0; margin-bottom:10px; }
+        .p-card .body .prices { display:flex; align-items:baseline; gap:10px; margin-bottom:10px; }
+        .p-card .body .prices .cur { font-size:26px; font-weight:800; color:#e03a3a; font-family:"DIN Alternate","Impact",sans-serif; }
+        .p-card .body .prices .cur::before { content:'¥'; font-size:14px; }
+        .p-card .body .prices .old { font-size:13px; color:#bbb; text-decoration:line-through; }
+        .p-card .body .prices .disc { margin-left:auto; font-size:11px; font-weight:700; color:#e03a3a; background:#fef0f0; padding:2px 8px; border-radius:4px; }
+        .p-card .body .stock-bar { height:6px; background:#eee; border-radius:3px; margin-bottom:6px; overflow:hidden; }
+        .p-card .body .stock-bar .fill { height:100%; border-radius:3px; transition:width 0.3s; }
+        .p-card .body .stock-bar .fill.high { background:#67c23a; }
+        .p-card .body .stock-bar .fill.mid { background:#e6a23c; }
+        .p-card .body .stock-bar .fill.low { background:#f56c6c; }
+        .p-card .body .stock-label { font-size:11px; color:#999; margin-bottom:12px; }
+        .p-card .body .buy-btn {
+            width:100%; height:40px; border:none; border-radius:8px;
+            font-size:14px; font-weight:700; cursor:pointer; transition:all 0.15s;
+        }
+        .p-card .body .buy-btn:active { transform:scale(0.97); }
+        .buy-able { background:#e03a3a; color:#fff; }
+        .buy-able:hover { background:#cc3333; }
+        .buy-pending { background:#e8e8ed; color:#999; cursor:not-allowed; }
+        .buy-queuing { background:#e03a3a; color:#fff; opacity:0.65; cursor:wait; }
+        .buy-soldout { background:#e8e8ed; color:#bbb; cursor:not-allowed; }
+
+        /* ===== Profile Page ===== */
+        .profile-header {
+            background:#fff; border-radius:12px; padding:32px;
+            box-shadow:0 1px 3px rgba(0,0,0,0.04); margin-bottom:24px;
+            display:flex; align-items:center; gap:24px;
+        }
+        .profile-avatar {
+            width:80px; height:80px; border-radius:50%;
+            background:linear-gradient(135deg,#e03a3a,#ff6b81);
+            display:flex; align-items:center; justify-content:center;
+            font-size:32px; color:#fff; font-weight:700; flex-shrink:0;
+        }
+        .profile-info { flex:1; }
+        .profile-info .nickname { font-size:22px; font-weight:700; margin-bottom:4px; }
+        .profile-info .meta { font-size:13px; color:#999; line-height:1.8; }
+        .profile-stats { display:flex; gap:24px; flex-shrink:0; }
+        .stat-item { text-align:center; }
+        .stat-item .num { font-size:28px; font-weight:800; color:#e03a3a; }
+        .stat-item .lbl { font-size:12px; color:#999; margin-top:4px; }
+
+        /* ===== Common ===== */
+        .white-card {
+            background:#fff; border-radius:12px; padding:24px;
+            box-shadow:0 1px 3px rgba(0,0,0,0.04); margin-bottom:16px;
+        }
+        .white-card h3 { font-size:16px; font-weight:600; margin-bottom:16px; padding-bottom:10px; border-bottom:1px solid #f0f0f0; }
+        .empty-state { text-align:center; padding:48px 0; color:#bbb; }
+        .empty-state .icon { font-size:48px; margin-bottom:12px; }
+        .empty-state .text { font-size:14px; }
+
+        [v-cloak] { display:none !important; }
+    </style>
+</head>
+<body>
+<div id="app" v-cloak>
+    <!-- ===== Header ===== -->
+    <header class="app-header">
+        <div class="logo" @click="page='home'">⚡秒杀专场</div>
+        <nav>
+            <a :class="{active:page==='home'}" @click="page='home'">秒杀商品</a>
+            <a v-if="user" :class="{active:page==='profile'}" @click="page='profile'">我的账户</a>
+            <a v-if="user" :class="{active:page==='orders'}" @click="page='orders'">我的订单</a>
+        </nav>
+        <div class="header-right">
+            <template v-if="user">
+                <el-dropdown trigger="click">
+                    <span style="cursor:pointer;display:flex;align-items:center;gap:8px;">
+                        <el-avatar :size="30" style="background:#e03a3a;">{{ user.nickname?.charAt(0) || 'U' }}</el-avatar>
+                        <span style="font-size:14px;font-weight:600;">{{ user.nickname }}</span>
+                    </span>
+                    <template #dropdown>
+                        <el-dropdown-menu>
+                            <el-dropdown-item @click="page='profile'">👤 个人中心</el-dropdown-item>
+                            <el-dropdown-item @click="page='orders'">📋 我的订单</el-dropdown-item>
+                            <el-dropdown-item divided @click="doLogout">退出登录</el-dropdown-item>
+                        </el-dropdown-menu>
+                    </template>
+                </el-dropdown>
+            </template>
+            <template v-else>
+                <el-button size="small" @click="showLogin=true">登录</el-button>
+                <el-button size="small" type="danger" @click="showRegister=true">注册</el-button>
+            </template>
+        </div>
+    </header>
+
+    <!-- ===== Main ===== -->
+    <div class="main-container">
+
+        <!-- ========== PAGE: Home ========== -->
+        <template v-if="page==='home'">
+            <!-- Countdown Banner -->
+            <div class="banner">
+                <div class="bn-text">{{ countdownLabel }}</div>
+                <div class="bn-timer">
+                    <span class="block">{{ hh }}</span><span class="sep">:</span>
+                    <span class="block">{{ mm }}</span><span class="sep">:</span>
+                    <span class="block">{{ ss }}</span>
+                </div>
+            </div>
+
+            <div v-if="loading" style="text-align:center;padding:60px;color:#999;">加载商品中...</div>
+            <div v-else class="product-grid">
+                <div v-for="g in goodsList" :key="g.id" class="p-card">
+                    <div class="img-area">
+                        <span class="tag">秒杀</span>
+                        <span class="stock-badge">剩 {{ g.stockCount || 0 }} 件</span>
+                        <img src="https://images.unsplash.com/photo-1542291026-7eec264c27ff?q=80&w=400&auto=format&fit=crop" alt="">
+                    </div>
+                    <div class="body">
+                        <div class="name">{{ g.goodsName }}</div>
+                        <div class="id-sub">编号 #{{ g.id }}</div>
+                        <div class="prices">
+                            <span class="cur">{{ fmt(g.seckillPrice) }}</span>
+                            <span class="old">¥{{ fmt(g.goodsPrice) }}</span>
+                            <span class="disc">{{ discountPct(g) }}% OFF</span>
+                        </div>
+                        <div class="stock-bar">
+                            <div class="fill" :class="stockCls(g)" :style="{width:stockPct(g)+'%'}"></div>
+                        </div>
+                        <div class="stock-label">剩 {{ g.stockCount||0 }} / 总 {{ g.seckillStock||'--' }} 件</div>
+                        <button class="buy-btn" :class="btnCls(g)" :disabled="!canBuy(g)" @click="startBuy(g)">
+                            {{ btnLbl(g) }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <!-- ========== PAGE: Profile ========== -->
+        <template v-if="page==='profile' && user">
+            <div class="profile-header">
+                <div class="profile-avatar">{{ user.nickname?.charAt(0) || 'U' }}</div>
+                <div class="profile-info">
+                    <div class="nickname">{{ user.nickname }}</div>
+                    <div class="meta">
+                        <div>📱 {{ user.phone }}</div>
+                        <div>🆔 用户 ID：{{ user.id }}</div>
+                    </div>
+                </div>
+                <div class="profile-stats">
+                    <div class="stat-item">
+                        <div class="num">{{ orders.length }}</div>
+                        <div class="lbl">全部订单</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="num">{{ orders.filter(o=>o.orderStatus===0).length }}</div>
+                        <div class="lbl">待支付</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="num">{{ orders.filter(o=>o.orderStatus===1).length }}</div>
+                        <div class="lbl">已完成</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="white-card">
+                <h3>📋 最近订单</h3>
+                <template v-if="orders.length > 0">
+                    <el-table :data="orders.slice(0,5)" style="width:100%">
+                        <el-table-column prop="id" label="订单号" width="100" />
+                        <el-table-column prop="goodsId" label="商品ID" width="80" />
+                        <el-table-column label="金额" width="100">
+                            <template #default="s">¥{{ s.row.seckillPrice }}</template>
+                        </el-table-column>
+                        <el-table-column label="状态" width="100">
+                            <template #default="s">
+                                <el-tag :type="s.row.orderStatus===0?'warning':'success'" size="small">
+                                    {{ s.row.orderStatus===0?'待支付':s.row.orderStatus===1?'已支付':'其他' }}
+                                </el-tag>
+                            </template>
+                        </el-table-column>
+                        <el-table-column label="时间">
+                            <template #default="s">{{ s.row.createTime }}</template>
+                        </el-table-column>
+                    </el-table>
+                    <div style="text-align:center;margin-top:12px;">
+                        <el-button type="text" @click="page='orders'">查看全部订单 →</el-button>
+                    </div>
+                </template>
+                <div v-else class="empty-state">
+                    <div class="icon">📭</div>
+                    <div class="text">还没有订单，快去抢购吧！</div>
+                </div>
+            </div>
+        </template>
+
+        <!-- ========== PAGE: Orders ========== -->
+        <template v-if="page==='orders' && user">
+            <div class="white-card">
+                <h3>📋 我的秒杀订单</h3>
+                <template v-if="orders.length > 0">
+                    <el-table :data="orders" style="width:100%" v-loading="ordersLoading">
+                        <el-table-column prop="id" label="订单号" width="100" />
+                        <el-table-column prop="goodsId" label="商品ID" width="80" />
+                        <el-table-column prop="activityId" label="活动ID" width="80" />
+                        <el-table-column label="秒杀价" width="100">
+                            <template #default="s">¥{{ s.row.seckillPrice }}</template>
+                        </el-table-column>
+                        <el-table-column label="状态" width="100">
+                            <template #default="s">
+                                <el-tag :type="s.row.orderStatus===0?'warning':'success'" size="small">
+                                    {{ s.row.orderStatus===0?'待支付':s.row.orderStatus===1?'已支付':'已取消' }}
+                                </el-tag>
+                            </template>
+                        </el-table-column>
+                        <el-table-column label="创建时间">
+                            <template #default="s">{{ s.row.createTime }}</template>
+                        </el-table-column>
+                    </el-table>
+                </template>
+                <div v-else class="empty-state">
+                    <div class="icon">📭</div>
+                    <div class="text">暂无订单记录</div>
+                </div>
+            </div>
+        </template>
+
+        <!-- ========== Not Logged In ========== -->
+        <template v-if="(page==='profile'||page==='orders') && !user">
+            <div class="empty-state" style="padding:80px 0;">
+                <div class="icon">🔐</div>
+                <div class="text">请先登录后查看</div>
+                <el-button type="danger" style="margin-top:16px;" @click="showLogin=true">立即登录</el-button>
+            </div>
+        </template>
+    </div>
+
+    <!-- ===== Login Dialog ===== -->
+    <el-dialog v-model="showLogin" title="用户登录" width="380px" center :close-on-click-modal="false" append-to-body>
+        <div style="padding:12px 0;">
+            <el-form :model="loginForm" label-position="top">
+                <el-form-item label="手机号">
+                    <el-input v-model="loginForm.phone" placeholder="请输入手机号" size="large" />
+                </el-form-item>
+                <el-form-item label="密码">
+                    <el-input v-model="loginForm.password" type="password" placeholder="请输入密码" size="large" show-password @keyup.enter="doLogin" />
+                </el-form-item>
+            </el-form>
+            <el-button type="danger" size="large" style="width:100%;" @click="doLogin" :loading="authLoading">登录</el-button>
+            <p style="text-align:center;margin-top:12px;font-size:13px;color:#999;">测试：13800000001 / 123456</p>
+        </div>
+    </el-dialog>
+
+    <!-- ===== Register Dialog ===== -->
+    <el-dialog v-model="showRegister" title="注册新账号" width="380px" center :close-on-click-modal="false" append-to-body>
+        <div style="padding:12px 0;">
+            <el-form :model="regForm" label-position="top">
+                <el-form-item label="昵称">
+                    <el-input v-model="regForm.nickname" placeholder="给自己起个名字" size="large" />
+                </el-form-item>
+                <el-form-item label="手机号">
+                    <el-input v-model="regForm.phone" placeholder="请输入手机号" size="large" />
+                </el-form-item>
+                <el-form-item label="密码">
+                    <el-input v-model="regForm.password" type="password" placeholder="至少6位" size="large" show-password />
+                </el-form-item>
+            </el-form>
+            <el-button type="danger" size="large" style="width:100%;" @click="doRegister" :loading="authLoading">注册</el-button>
+        </div>
+    </el-dialog>
+
+    <!-- ===== Captcha Dialog ===== -->
+    <el-dialog v-model="showCaptcha" title="🔐 安全验证" width="350px" center :close-on-click-modal="false" append-to-body>
+        <div style="text-align:center;padding:8px 0;">
+            <p style="font-size:13px;color:#888;margin-bottom:16px;">请计算以下数学题</p>
+            <div style="background:#f5f5f7;border-radius:10px;padding:18px 28px;display:inline-block;cursor:pointer;"
+                 @click="refreshCaptcha" title="点击刷新题目">
+                <span v-if="captchaText==='...'" style="font-size:14px;color:#999;">加载中...</span>
+                <span v-else style="font-size:30px;font-weight:700;font-family:'SF Mono','Consolas',monospace;letter-spacing:4px;user-select:none;">{{ captchaText }}</span>
+            </div>
+            <el-input v-model="captchaAnswer" placeholder="输入计算结果" size="large" style="margin-top:16px;" @keyup.enter="submitCaptcha" clearable>
+                <template #prefix><span style="color:#bbb;font-weight:700;">=</span></template>
+            </el-input>
+        </div>
+        <template #footer>
+            <el-button @click="showCaptcha=false">取消</el-button>
+            <el-button type="danger" @click="submitCaptcha" :disabled="!captchaAnswer">确认抢购</el-button>
+        </template>
+    </el-dialog>
+
+    <!-- ===== Result Dialog ===== -->
+    <el-dialog v-model="showResult" title="" width="340px" center :show-close="false" append-to-body>
+        <div style="text-align:center;padding:20px 0;">
+            <div style="font-size:52px;margin-bottom:12px;">{{ resultIcon }}</div>
+            <p style="font-size:16px;font-weight:600;">{{ resultMsg }}</p>
+            <p v-if="resultOid" style="font-size:12px;color:#999;margin-top:8px;">订单号：{{ resultOid }}</p>
+        </div>
+        <template #footer>
+            <el-button type="primary" @click="showResult=false">确定</el-button>
+        </template>
+    </el-dialog>
+</div>
+
+<script>
+    const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
+    const api = axios.create({ baseURL: '' });
+    api.interceptors.request.use(cfg => {
+        const t = localStorage.getItem('token');
+        if (t) cfg.headers.Authorization = t;
+        return cfg;
+    });
+
+    createApp({
+        setup() {
+            // ── Auth ──
+            const token = ref(localStorage.getItem('token')||'');
+            const user = ref(null);
+            const showLogin = ref(false); const showRegister = ref(false); const authLoading = ref(false);
+            const loginForm = ref({ phone:'13800000001', password:'123456' });
+            const regForm = ref({ nickname:'', phone:'', password:'' });
+            const saveToken = t => { token.value=t; localStorage.setItem('token',t); };
+            const clearAuth = () => { token.value=''; localStorage.removeItem('token'); user.value=null; };
+
+            const tryRestore = async () => {
+                if (!token.value) return;
+                try { const r = await api.get('/user/info'); if(r.data.code===200) user.value=r.data.data; else clearAuth(); }
+                catch { clearAuth(); }
+            };
+
+            const doLogin = async () => {
+                if(!loginForm.value.phone||!loginForm.value.password){ ElementPlus.ElMessage.warning('请输入手机号和密码'); return; }
+                authLoading.value=true;
+                try {
+                    const r = await api.post('/user/login', loginForm.value);
+                    if(r.data.code===200){ saveToken(r.data.data.token); user.value=r.data.data.user; showLogin.value=false; ElementPlus.ElMessage.success('登录成功'); loadOrders().then(()=>loadGoods()); }
+                    else ElementPlus.ElMessage.error(r.data.message);
+                } catch { ElementPlus.ElMessage.error('登录失败'); }
+                finally { authLoading.value=false; }
+            };
+
+            const doRegister = async () => {
+                if(!regForm.value.nickname||!regForm.value.phone||!regForm.value.password){ ElementPlus.ElMessage.warning('请填写所有字段'); return; }
+                if(regForm.value.password.length<6){ ElementPlus.ElMessage.warning('密码至少6位'); return; }
+                authLoading.value=true;
+                try {
+                    const r = await api.post('/user/register', regForm.value);
+                    if(r.data.code===200){ saveToken(r.data.data.token); user.value=r.data.data.user; showRegister.value=false; ElementPlus.ElMessage.success('注册成功'); loadOrders().then(()=>loadGoods()); }
+                    else ElementPlus.ElMessage.error(r.data.message);
+                } catch { ElementPlus.ElMessage.error('注册失败'); }
+                finally { authLoading.value=false; }
+            };
+
+            const doLogout = async () => {
+                try { await api.post('/user/logout'); } catch {}
+                clearAuth(); page.value='home'; ElementPlus.ElMessage.success('已退出');
+            };
+
+            // ── Page ──
+            const page = ref('home');
+
+            // ── Countdown ──
+            const saleStart = ref(Date.now()+5000);
+            const hh=ref('00'), mm=ref('00'), ss=ref('00');
+            let cdTimer=null;
+            // 用 ref 而非 computed，因为 Date.now() 不是响应式的
+            const countdownLabel = ref('距离开抢');
+            const saleStarted = ref(false);
+            const tick = () => {
+                const d = Math.max(0, saleStart.value-Date.now());
+                if(d<=0){
+                    saleStarted.value = true;
+                    countdownLabel.value = '秒杀进行中 🔥';
+                    clearInterval(cdTimer);
+                    hh.value='00'; mm.value='00'; ss.value='00';
+                    return;
+                }
+                const t=Math.floor(d/1000);
+                hh.value=String(Math.floor(t/3600)).padStart(2,'0');
+                mm.value=String(Math.floor((t%3600)/60)).padStart(2,'0');
+                ss.value=String(t%60).padStart(2,'0');
+            };
+
+            // ── Goods ──
+            const goodsList = ref([]); const loading=ref(true);
+            const loadGoods = async () => {
+                try {
+                    const r = await api.get('/goods/list');
+                    if(r.data.code===200) {
+                        // 交叉比对已有订单，标记已购买的商品
+                        const boughtIds = new Set(orders.value.map(o=>o.goodsId));
+                        goodsList.value=(r.data.data||[]).map(g=>({
+                            ...g,
+                            _state: boughtIds.has(g.id) ? 'bought' : 'ready'
+                        }));
+                    }
+                } catch {} finally { loading.value=false; }
+            };
+
+            // ── Orders ──
+            const orders=ref([]); const ordersLoading=ref(false);
+            const loadOrders = async () => {
+                if(!user.value) return;
+                ordersLoading.value=true;
+                try { const r=await api.get('/user/orders'); if(r.data.code===200) orders.value=r.data.data||[]; }
+                catch {} finally { ordersLoading.value=false; }
+            };
+
+            // ── Helpers ──
+            const fmt = v => v!=null ? Number(v).toFixed(0) : '--';
+            const discountPct = g => {
+                if(!g.seckillPrice||!g.goodsPrice||g.goodsPrice<=0) return 0;
+                return Math.round((1-g.seckillPrice/g.goodsPrice)*100);
+            };
+            const stockPct = g => {
+                if(!g.stockCount) return 0;
+                const max = g.seckillStock||g.stockCount||1;
+                return Math.min(100, Math.max(0, (g.stockCount/max)*100));
+            };
+            const stockCls = g => { const p=stockPct(g); return p>50?'high':p>20?'mid':'low'; };
+            const canBuy = g => {
+                if(!user.value||!saleStarted.value) return false;
+                if(g._state==='queuing'||g._state==='soldout'||g._state==='bought') return false;
+                return (g.stockCount||0)>0;
+            };
+            const btnCls = g => {
+                if(!user.value||!saleStarted.value) return 'buy-pending';
+                if(g._state==='queuing') return 'buy-queuing';
+                if(g._state==='soldout'||g._state==='bought'||(g.stockCount||0)<=0) return 'buy-soldout';
+                return 'buy-able';
+            };
+            const btnLbl = g => {
+                if(!user.value) return '请先登录';
+                if(!saleStarted.value) return '即将开抢';
+                if(g._state==='bought') return '已购买 ✓';
+                if(g._state==='queuing') return '排队中...';
+                if(g._state==='soldout'||(g.stockCount||0)<=0) return '已售罄';
+                return '立即抢购';
+            };
+
+            // ── Buy Flow ──
+            const showCaptcha=ref(false); const captchaText=ref('...'); const captchaAnswer=ref('');
+            let currentGoods=null;
+
+            const startBuy = g => {
+                if(!user.value){ showLogin.value=true; return; }
+                currentGoods=g; showCaptcha.value=true; captchaAnswer.value=''; refreshCaptcha();
+            };
+            const refreshCaptcha = async () => {
+                captchaText.value='...'; captchaAnswer.value='';
+                try { const r=await api.get('/order/captcha',{params:{goodsId:currentGoods.id,_t:Date.now()}}); captchaText.value=r.data.code===200?r.data.data:'点击重试'; }
+                catch { captchaText.value='获取失败，点击重试'; }
+            };
+
+            let pollTimer=null;
+            const submitCaptcha = async () => {
+                if(!captchaAnswer.value.trim()){ ElementPlus.ElMessage.warning('请输入答案'); return; }
+                const g=currentGoods; showCaptcha.value=false; g._state='queuing';
+                try {
+                    const r1=await api.get('/order/path',{params:{goodsId:g.id,captchaAnswer:captchaAnswer.value}});
+                    if(r1.data.code!==200) throw new Error(r1.data.message||'验证码错误');
+                    const path=r1.data.data;
+                    const r2=await api.get(`/order/${path}/do_seckill`,{params:{goodsId:g.id}});
+                    if(r2.data.code===200&&r2.data.data===0){ ElementPlus.ElMessage.success('已进入排队，等待处理...'); startPolling(g); }
+                    else throw new Error(r2.data.message||'秒杀失败');
+                } catch(e){ console.error(e); ElementPlus.ElMessage.error(e.message||'操作失败'); if(g._state==='queuing') g._state='ready'; }
+            };
+
+            const startPolling = g => {
+                pollTimer = setInterval(async () => {
+                    try {
+                        const r = await api.get('/order/result',{params:{goodsId:g.id}});
+                        if(r.data.code!==200) return;
+                        const v=r.data.data;
+                        if(v>0){ clearInterval(pollTimer); g._state='ready'; g.stockCount=Math.max(0,(g.stockCount||0)-1); showResultDialog('🎉','抢购成功！',v); loadOrders(); loadGoods(); }
+                        else if(v===-1){ clearInterval(pollTimer); g._state='ready'; showResultDialog('😢','抢购失败，请重试',null); loadGoods(); }
+                    } catch {}
+                }, 500);
+            };
+
+            const showResult=ref(false); const resultIcon=ref(''); const resultMsg=ref(''); const resultOid=ref(null);
+            const showResultDialog = (icon,msg,oid) => { resultIcon.value=icon; resultMsg.value=msg; resultOid.value=oid; showResult.value=true; };
+
+            const initData = async () => {
+                await tryRestore();
+                if(user.value) await loadOrders();
+                await loadGoods();
+            };
+            onMounted(() => { tick(); cdTimer=setInterval(tick,200); initData(); });
+            onUnmounted(() => { clearInterval(cdTimer); if(pollTimer) clearInterval(pollTimer); });
+
+            return {
+                user,token,showLogin,showRegister,authLoading,loginForm,regForm,
+                doLogin,doRegister,doLogout,
+                page,
+                hh,mm,ss,countdownLabel,saleStarted,
+                goodsList,loading,
+                orders,ordersLoading,
+                fmt,discountPct,stockPct,stockCls,canBuy,btnCls,btnLbl,
+                showCaptcha,captchaText,captchaAnswer,startBuy,refreshCaptcha,submitCaptcha,
+                showResult,resultIcon,resultMsg,resultOid,
+            };
+        }
+    }).use(ElementPlus).mount('#app');
+</script>
+</body>
+</html>
