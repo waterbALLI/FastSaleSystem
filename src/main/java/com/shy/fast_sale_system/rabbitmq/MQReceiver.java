@@ -2,6 +2,7 @@ package com.shy.fast_sale_system.rabbitmq;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shy.fast_sale_system.config.MQConfig;
+import com.shy.fast_sale_system.controller.OrderController;
 import com.shy.fast_sale_system.pojo.User;
 import com.shy.fast_sale_system.service.GoodsService;
 import com.shy.fast_sale_system.service.OrderService;
@@ -27,6 +28,9 @@ public class MQReceiver {
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;
 
+    @Autowired
+    private OrderController orderController;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @RabbitListener(queues = MQConfig.SECKILL_QUEUE)
@@ -47,22 +51,35 @@ public class MQReceiver {
             resultKey = "seckill:result:" + userId + ":" + goodsId;
 
             // 2. 获取商品信息（仅校验商品存在，不做库存二次检查）
-            //    注意：Redis 库存已由控制器预扣（stock.lua），这里再读 Redis 会
-            //    读到扣减后的值（如 1→0），错误地把最后一单判定为"库存不足"。
-            //    真正的 MySQL 库存兜底校验在 OrderServiceImpl.seckill() 内部完成。
             GoodsVo goods = goodsService.getGoodsVoByGoodsId(goodsId);
             if (goods == null) {
                 log.error("【MQ 消费者】商品不存在 goodsId={}", goodsId);
+                goodsService.rollbackStock(goodsId);
+                orderController.clearSoldOutMarker(goodsId);
                 redisTemplate.opsForValue().set(resultKey, -1, 120, TimeUnit.SECONDS);
                 return;
             }
 
             // 3. 执行秒杀下单（含 Redisson 分布式锁 + MySQL 库存扣减 + 写订单）
-            orderService.seckill(user, goods);
+            long orderId = orderService.seckill(user, goods);
+            if (orderId <= 0) {
+                // 下单失败 → 回补 Redis 库存
+                log.warn("【MQ 消费者】下单失败 (return={})，执行库存回补 goodsId={}", orderId, goodsId);
+                goodsService.rollbackStock(goodsId);
+                orderController.clearSoldOutMarker(goodsId);
+            }
 
         } catch (Exception e) {
             log.error("【MQ 消费者】处理秒杀消息失败：{}", message, e);
-            // 关键修复：异常时必须通知前端，否则轮询永远不结束
+            // 异常时回补库存 + 通知前端
+            if (goodsId != null) {
+                try {
+                    goodsService.rollbackStock(goodsId);
+                    orderController.clearSoldOutMarker(goodsId);
+                } catch (Exception ex) {
+                    log.error("【MQ 消费者】库存回补失败 goodsId={}", goodsId, ex);
+                }
+            }
             if (resultKey != null) {
                 try {
                     redisTemplate.opsForValue().set(resultKey, -1, 120, TimeUnit.SECONDS);

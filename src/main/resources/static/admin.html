@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理后台 - Fast Sale</title>
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/element-plus"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: #f0f2f5; color: #2c3e50; min-height: 100vh;
+        }
+        .admin-header {
+            background: #1a1a2e; color: #fff; padding: 0 32px; height: 56px;
+            display: flex; align-items: center; gap: 32px;
+        }
+        .admin-header .logo { font-size: 18px; font-weight: 700; color: #e03a3a; }
+        .admin-header nav { display: flex; gap: 8px; }
+        .admin-header nav a {
+            color: #bbb; text-decoration: none; font-size: 13px; padding: 6px 14px;
+            border-radius: 6px; cursor: pointer; transition: all 0.15s;
+        }
+        .admin-header nav a:hover, .admin-header nav a.active { color: #fff; background: rgba(255,255,255,0.1); }
+        .header-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+        .main-area { max-width: 1400px; margin: 0 auto; padding: 24px 32px; }
+        .card { background: #fff; border-radius: 10px; padding: 20px 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); margin-bottom: 20px; }
+        .card h3 { font-size: 15px; font-weight: 600; margin-bottom: 16px; }
+        [v-cloak] { display: none !important; }
+    </style>
+</head>
+<body>
+<div id="app" v-cloak>
+    <!-- Header -->
+    <header class="admin-header">
+        <div class="logo">⚡ Fast Sale 管理后台</div>
+        <nav>
+            <a :class="{active:tab==='goods'}" @click="tab='goods'">商品管理</a>
+            <a :class="{active:tab==='activities'}" @click="tab='activities'">活动管理</a>
+            <a :class="{active:tab==='seckill'}" @click="tab='seckill'">秒杀商品</a>
+            <a :class="{active:tab==='orders'}" @click="tab='orders'">订单管理</a>
+            <a :class="{active:tab==='metrics'}" @click="tab='metrics'">监控指标</a>
+        </nav>
+        <div class="header-right">
+            <el-button size="small" @click="doPreheat" :loading="preheating">🔄 手动预热</el-button>
+            <span v-if="!authed" style="color:#e6a23c;font-size:12px;">未登录</span>
+            <span v-else style="color:#67c23a;font-size:12px;">✅ 已认证</span>
+        </div>
+    </header>
+
+    <div class="main-area">
+        <!-- Login -->
+        <template v-if="!authed">
+            <div class="card" style="max-width:400px;margin:80px auto;text-align:center;">
+                <h3>🔐 管理员登录</h3>
+                <el-input v-model="adminTokenInput" placeholder="请输入管理员 Token" size="large" show-password style="margin-bottom:16px;" @keyup.enter="doAdminLogin" />
+                <el-button type="danger" size="large" style="width:100%;" @click="doAdminLogin" :loading="loginLoading">登录</el-button>
+                <p style="margin-top:12px;font-size:12px;color:#999;">默认 Token: admin-secret-token</p>
+            </div>
+        </template>
+
+        <!-- Tab: Goods -->
+        <template v-if="authed && tab==='goods'">
+            <div class="card">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <h3 style="margin-bottom:0;">📦 商品管理</h3>
+                    <el-button type="danger" size="small" @click="openGoodsDialog(null)">+ 新增商品</el-button>
+                </div>
+                <el-table :data="goodsList" style="width:100%;margin-top:16px;" v-loading="goodsLoading">
+                    <el-table-column prop="id" label="ID" width="60" />
+                    <el-table-column prop="goodsName" label="商品名称" />
+                    <el-table-column prop="goodsPrice" label="原价" width="80">
+                        <template #default="s">¥{{ s.row.goodsPrice }}</template>
+                    </el-table-column>
+                    <el-table-column prop="goodsStock" label="库存" width="80" />
+                    <el-table-column label="操作" width="140">
+                        <template #default="s">
+                            <el-button size="small" @click="openGoodsDialog(s.row)">编辑</el-button>
+                            <el-button size="small" type="danger" @click="deleteGoods(s.row.id)">删除</el-button>
+                        </template>
+                    </el-table-column>
+                </el-table>
+            </div>
+        </template>
+
+        <!-- Tab: Activities -->
+        <template v-if="authed && tab==='activities'">
+            <div class="card">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <h3 style="margin-bottom:0;">📅 活动管理</h3>
+                    <el-button type="danger" size="small" @click="openActivityDialog(null)">+ 新增活动</el-button>
+                </div>
+                <el-table :data="activityList" style="width:100%;margin-top:16px;" v-loading="actLoading">
+                    <el-table-column prop="id" label="ID" width="60" />
+                    <el-table-column prop="activityName" label="活动名称" />
+                    <el-table-column label="开始时间" width="160">
+                        <template #default="s">{{ s.row.startTime }}</template>
+                    </el-table-column>
+                    <el-table-column label="结束时间" width="160">
+                        <template #default="s">{{ s.row.endTime }}</template>
+                    </el-table-column>
+                    <el-table-column label="状态" width="80">
+                        <template #default="s">
+                            <el-tag :type="s.row.status===1?'success':s.row.status===2?'info':'warning'" size="small">
+                                {{ s.row.status===0?'未开始':s.row.status===1?'进行中':'已结束' }}
+                            </el-tag>
+                        </template>
+                    </el-table-column>
+                    <el-table-column label="操作" width="200">
+                        <template #default="s">
+                            <el-button size="small" @click="openActivityDialog(s.row)">编辑</el-button>
+                            <el-button size="small" type="danger" @click="deleteActivity(s.row.id)">删除</el-button>
+                        </template>
+                    </el-table-column>
+                </el-table>
+            </div>
+        </template>
+
+        <!-- Tab: Seckill Goods -->
+        <template v-if="authed && tab==='seckill'">
+            <div class="card">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <h3 style="margin-bottom:0;">⚡ 秒杀商品配置</h3>
+                    <el-button type="danger" size="small" @click="openSeckillDialog(null)">+ 新增配置</el-button>
+                </div>
+                <el-table :data="seckillList" style="width:100%;margin-top:16px;" v-loading="sgLoading">
+                    <el-table-column prop="id" label="ID" width="60" />
+                    <el-table-column prop="goodsId" label="商品ID" width="80" />
+                    <el-table-column prop="activityId" label="活动ID" width="80" />
+                    <el-table-column label="秒杀价" width="80">
+                        <template #default="s">¥{{ s.row.seckillPrice }}</template>
+                    </el-table-column>
+                    <el-table-column prop="seckillStock" label="秒杀库存" width="80" />
+                    <el-table-column prop="limitPerUser" label="限购" width="60" />
+                    <el-table-column label="操作" width="140">
+                        <template #default="s">
+                            <el-button size="small" @click="openSeckillDialog(s.row)">编辑</el-button>
+                            <el-button size="small" type="danger" @click="deleteSeckill(s.row.id)">删除</el-button>
+                        </template>
+                    </el-table-column>
+                </el-table>
+            </div>
+        </template>
+
+        <!-- Tab: Orders -->
+        <template v-if="authed && tab==='orders'">
+            <div class="card">
+                <h3>📋 订单管理</h3>
+                <el-table :data="orderPage.records" style="width:100%;" v-loading="orderLoading">
+                    <el-table-column prop="id" label="订单号" width="80" />
+                    <el-table-column prop="userId" label="用户ID" width="80" />
+                    <el-table-column prop="goodsId" label="商品ID" width="80" />
+                    <el-table-column prop="activityId" label="活动ID" width="80" />
+                    <el-table-column label="金额" width="90">
+                        <template #default="s">¥{{ s.row.seckillPrice }}</template>
+                    </el-table-column>
+                    <el-table-column label="状态" width="80">
+                        <template #default="s">
+                            <el-tag :type="s.row.orderStatus===1?'success':s.row.orderStatus===0?'warning':'info'" size="small">
+                                {{ s.row.orderStatus===0?'待支付':s.row.orderStatus===1?'已支付':s.row.orderStatus===2?'已取消':'已退款' }}
+                            </el-tag>
+                        </template>
+                    </el-table-column>
+                    <el-table-column label="创建时间" width="160">
+                        <template #default="s">{{ s.row.createTime }}</template>
+                    </el-table-column>
+                </el-table>
+                <el-pagination style="margin-top:16px;justify-content:flex-end;"
+                    layout="prev,pager,next" :total="orderPage.total" v-model:current-page="orderPageNum"
+                    @current-change="loadOrders" />
+            </div>
+        </template>
+
+        <!-- Tab: Metrics -->
+        <template v-if="authed && tab==='metrics'">
+            <div class="card">
+                <h3>📊 系统监控</h3>
+                <div v-if="metrics" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;">
+                    <div class="card" style="margin-bottom:0;">
+                        <div style="font-size:12px;color:#999;">总请求数</div>
+                        <div style="font-size:24px;font-weight:700;color:#e03a3a;">{{ metrics.totalRequests || 0 }}</div>
+                    </div>
+                    <div class="card" style="margin-bottom:0;">
+                        <div style="font-size:12px;color:#999;">QPS</div>
+                        <div style="font-size:24px;font-weight:700;color:#409eff;">{{ metrics.qps || '--' }}</div>
+                    </div>
+                    <div class="card" style="margin-bottom:0;">
+                        <div style="font-size:12px;color:#999;">成功率</div>
+                        <div style="font-size:24px;font-weight:700;" :style="{color:metrics.successRate>95?'#67c23a':'#e6a23c'}">{{ metrics.successRate || 0 }}%</div>
+                    </div>
+                    <div class="card" style="margin-bottom:0;">
+                        <div style="font-size:12px;color:#999;">平均延迟</div>
+                        <div style="font-size:24px;font-weight:700;color:#e6a23c;">{{ metrics.avgLatency || 0 }}ms</div>
+                    </div>
+                </div>
+                <el-divider />
+                <h3>💚 组件健康状态</h3>
+                <div style="display:flex;gap:16px;margin-top:12px;">
+                    <el-tag v-for="(v,k) in health" :key="k" :type="v==='UP'?'success':'danger'" size="large">
+                        {{ k }}: {{ v }}
+                    </el-tag>
+                </div>
+                <el-button size="small" @click="loadHealth" style="margin-top:12px;">刷新</el-button>
+            </div>
+        </template>
+    </div>
+
+    <!-- === Goods Dialog === -->
+    <el-dialog v-model="showGoodsDlg" :title="editingGoods.id?'编辑商品':'新增商品'" width="500px" append-to-body>
+        <el-form :model="editingGoods" label-position="top">
+            <el-form-item label="商品名称">
+                <el-input v-model="editingGoods.goodsName" />
+            </el-form-item>
+            <el-form-item label="原价">
+                <el-input-number v-model="editingGoods.goodsPrice" :min="0" :precision="2" style="width:100%;" />
+            </el-form-item>
+            <el-form-item label="库存">
+                <el-input-number v-model="editingGoods.goodsStock" :min="0" style="width:100%;" />
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <el-button @click="showGoodsDlg=false">取消</el-button>
+            <el-button type="danger" @click="saveGoods">保存</el-button>
+        </template>
+    </el-dialog>
+
+    <!-- === Activity Dialog === -->
+    <el-dialog v-model="showActDlg" :title="editingAct.id?'编辑活动':'新增活动'" width="500px" append-to-body>
+        <el-form :model="editingAct" label-position="top">
+            <el-form-item label="活动名称">
+                <el-input v-model="editingAct.activityName" />
+            </el-form-item>
+            <el-form-item label="开始时间">
+                <el-date-picker v-model="editingAct.startTime" type="datetime" placeholder="选择开始时间" style="width:100%;" />
+            </el-form-item>
+            <el-form-item label="结束时间">
+                <el-date-picker v-model="editingAct.endTime" type="datetime" placeholder="选择结束时间" style="width:100%;" />
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <el-button @click="showActDlg=false">取消</el-button>
+            <el-button type="danger" @click="saveActivity">保存</el-button>
+        </template>
+    </el-dialog>
+
+    <!-- === Seckill Goods Dialog === -->
+    <el-dialog v-model="showSgDlg" :title="editingSg.id?'编辑秒杀商品':'新增秒杀商品'" width="500px" append-to-body>
+        <el-form :model="editingSg" label-position="top">
+            <el-form-item label="商品ID">
+                <el-input-number v-model="editingSg.goodsId" :min="1" style="width:100%;" />
+            </el-form-item>
+            <el-form-item label="活动ID">
+                <el-input-number v-model="editingSg.activityId" :min="1" style="width:100%;" />
+            </el-form-item>
+            <el-form-item label="秒杀价">
+                <el-input-number v-model="editingSg.seckillPrice" :min="0" :precision="2" style="width:100%;" />
+            </el-form-item>
+            <el-form-item label="秒杀库存">
+                <el-input-number v-model="editingSg.seckillStock" :min="0" style="width:100%;" />
+            </el-form-item>
+            <el-form-item label="每人限购">
+                <el-input-number v-model="editingSg.limitPerUser" :min="1" style="width:100%;" />
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <el-button @click="showSgDlg=false">取消</el-button>
+            <el-button type="danger" @click="saveSeckill">保存</el-button>
+        </template>
+    </el-dialog>
+</div>
+
+<script>
+    const { createApp, ref, onMounted } = Vue;
+    const api = axios.create({ baseURL: '' });
+
+    createApp({
+        setup() {
+            const authed = ref(false); const adminTokenInput = ref('admin-secret-token');
+            const loginLoading = ref(false);
+            const adminToken = ref('');
+
+            const doAdminLogin = async () => {
+                loginLoading.value = true;
+                try {
+                    const r = await api.post('/admin/login', { token: adminTokenInput.value });
+                    if (r.data.code === 200) {
+                        adminToken.value = r.data.data.adminToken;
+                        authed.value = true;
+                        localStorage.setItem('adminToken', adminToken.value);
+                        ElementPlus.ElMessage.success('登录成功');
+                        loadAll();
+                    } else {
+                        ElementPlus.ElMessage.error(r.data.message);
+                    }
+                } catch { ElementPlus.ElMessage.error('登录失败'); }
+                finally { loginLoading.value = false; }
+            };
+
+            // Restore
+            const saved = localStorage.getItem('adminToken');
+            if (saved) { adminToken.value = saved; authed.value = true; }
+
+            const authHeaders = () => ({ Authorization: 'Bearer ' + adminToken.value });
+
+            const tab = ref('goods');
+
+            // Goods
+            const goodsList = ref([]); const goodsLoading = ref(false);
+            const showGoodsDlg = ref(false); const editingGoods = ref({});
+            const loadGoods = async () => {
+                goodsLoading.value = true;
+                try { const r = await api.get('/admin/goods', { headers: authHeaders() }); if (r.data.code === 200) goodsList.value = r.data.data; }
+                catch {} finally { goodsLoading.value = false; }
+            };
+            const openGoodsDialog = (row) => {
+                editingGoods.value = row ? { ...row } : { goodsName: '', goodsPrice: 0, goodsStock: 0 };
+                showGoodsDlg.value = true;
+            };
+            const saveGoods = async () => {
+                const g = editingGoods.value;
+                try {
+                    let r;
+                    if (g.id) {
+                        r = await api.put('/admin/goods/' + g.id, g, { headers: authHeaders() });
+                    } else {
+                        r = await api.post('/admin/goods', g, { headers: authHeaders() });
+                    }
+                    if (r.data.code === 200) { showGoodsDlg.value = false; loadGoods(); ElementPlus.ElMessage.success('保存成功'); }
+                    else ElementPlus.ElMessage.error(r.data.message);
+                } catch { ElementPlus.ElMessage.error('保存失败'); }
+            };
+            const deleteGoods = async (id) => {
+                try { await ElementPlus.ElMessageBox.confirm('确认删除此商品？', '提示', { type: 'warning' }); }
+                catch { return; }
+                try { const r = await api.delete('/admin/goods/' + id, { headers: authHeaders() }); if (r.data.code === 200) { loadGoods(); ElementPlus.ElMessage.success('已删除'); } }
+                catch { ElementPlus.ElMessage.error('删除失败'); }
+            };
+
+            // Activities
+            const activityList = ref([]); const actLoading = ref(false);
+            const showActDlg = ref(false); const editingAct = ref({});
+            const loadActivities = async () => {
+                actLoading.value = true;
+                try { const r = await api.get('/admin/activities', { headers: authHeaders() }); if (r.data.code === 200) activityList.value = r.data.data; }
+                catch {} finally { actLoading.value = false; }
+            };
+            const openActivityDialog = (row) => {
+                editingAct.value = row ? { ...row } : { activityName: '', startTime: null, endTime: null };
+                showActDlg.value = true;
+            };
+            const saveActivity = async () => {
+                const a = editingAct.value;
+                try {
+                    let r;
+                    if (a.id) {
+                        r = await api.put('/admin/activities/' + a.id, a, { headers: authHeaders() });
+                    } else {
+                        r = await api.post('/admin/activities', a, { headers: authHeaders() });
+                    }
+                    if (r.data.code === 200) { showActDlg.value = false; loadActivities(); ElementPlus.ElMessage.success('保存成功'); }
+                    else ElementPlus.ElMessage.error(r.data.message);
+                } catch { ElementPlus.ElMessage.error('保存失败'); }
+            };
+            const deleteActivity = async (id) => {
+                try { await ElementPlus.ElMessageBox.confirm('确认删除此活动？', '提示', { type: 'warning' }); }
+                catch { return; }
+                try { const r = await api.delete('/admin/activities/' + id, { headers: authHeaders() }); if (r.data.code === 200) { loadActivities(); ElementPlus.ElMessage.success('已删除'); } }
+                catch { ElementPlus.ElMessage.error('删除失败'); }
+            };
+
+            // Seckill Goods
+            const seckillList = ref([]); const sgLoading = ref(false);
+            const showSgDlg = ref(false); const editingSg = ref({});
+            const loadSeckill = async () => {
+                sgLoading.value = true;
+                try { const r = await api.get('/admin/seckill-goods', { headers: authHeaders() }); if (r.data.code === 200) seckillList.value = r.data.data; }
+                catch {} finally { sgLoading.value = false; }
+            };
+            const openSeckillDialog = (row) => {
+                editingSg.value = row ? { ...row } : { goodsId: null, activityId: null, seckillPrice: 0, seckillStock: 0, limitPerUser: 1 };
+                showSgDlg.value = true;
+            };
+            const saveSeckill = async () => {
+                const sg = editingSg.value;
+                try {
+                    let r;
+                    if (sg.id) {
+                        r = await api.put('/admin/seckill-goods/' + sg.id, sg, { headers: authHeaders() });
+                    } else {
+                        r = await api.post('/admin/seckill-goods', sg, { headers: authHeaders() });
+                    }
+                    if (r.data.code === 200) { showSgDlg.value = false; loadSeckill(); ElementPlus.ElMessage.success('保存成功'); }
+                    else ElementPlus.ElMessage.error(r.data.message);
+                } catch { ElementPlus.ElMessage.error('保存失败'); }
+            };
+            const deleteSeckill = async (id) => {
+                try { await ElementPlus.ElMessageBox.confirm('确认删除？', '提示', { type: 'warning' }); }
+                catch { return; }
+                try { const r = await api.delete('/admin/seckill-goods/' + id, { headers: authHeaders() }); if (r.data.code === 200) { loadSeckill(); ElementPlus.ElMessage.success('已删除'); } }
+                catch { ElementPlus.ElMessage.error('删除失败'); }
+            };
+
+            // Orders
+            const orderPage = ref({ records: [], total: 0 }); const orderLoading = ref(false);
+            const orderPageNum = ref(1);
+            const loadOrders = async () => {
+                orderLoading.value = true;
+                try { const r = await api.get('/admin/orders', { headers: authHeaders(), params: { page: orderPageNum.value, size: 20 } }); if (r.data.code === 200) orderPage.value = r.data.data; }
+                catch {} finally { orderLoading.value = false; }
+            };
+
+            // Preheat
+            const preheating = ref(false);
+            const doPreheat = async () => {
+                preheating.value = true;
+                try { const r = await api.post('/admin/preheat', null, { headers: authHeaders() }); ElementPlus.ElMessage.success(r.data.message||'预热完成'); }
+                catch { ElementPlus.ElMessage.error('预热失败'); }
+                finally { preheating.value = false; }
+            };
+
+            // Metrics & Health
+            const metrics = ref(null); const health = ref({});
+            const loadMetrics = async () => {
+                try { const r = await api.get('/admin/metrics', { headers: authHeaders() }); if (r.data.code === 200) metrics.value = r.data.data; } catch {}
+            };
+            const loadHealth = async () => {
+                try { const r = await api.get('/health'); if (r.data.code === 200 && r.data.data) health.value = r.data.data; } catch {}
+            };
+
+            const loadAll = () => {
+                loadGoods(); loadActivities(); loadSeckill(); loadOrders(); loadMetrics(); loadHealth();
+            };
+            onMounted(() => { if (authed.value) loadAll(); });
+
+            return {
+                authed, adminTokenInput, loginLoading, doAdminLogin, tab,
+                goodsList, goodsLoading, showGoodsDlg, editingGoods, openGoodsDialog, saveGoods, deleteGoods,
+                activityList, actLoading, showActDlg, editingAct, openActivityDialog, saveActivity, deleteActivity,
+                seckillList, sgLoading, showSgDlg, editingSg, openSeckillDialog, saveSeckill, deleteSeckill,
+                orderPage, orderLoading, orderPageNum, loadOrders,
+                preheating, doPreheat,
+                metrics, health, loadHealth,
+            };
+        }
+    }).use(ElementPlus).mount('#app');
+</script>
+</body>
+</html>

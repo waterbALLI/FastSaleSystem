@@ -12,4 +12,10 @@ public interface GoodsService {
 
     /** 获取所有秒杀商品列表（含秒杀价 + Redis实时库存） */
     List<GoodsVo> getSeckillList();
+
+    /**
+     * 库存回补：MQ 消费失败时将 Redis 库存 +1
+     * @param goodsId 商品ID
+     */
+    void rollbackStock(Long goodsId);
 }

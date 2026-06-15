@@ -41,7 +41,7 @@ public class OrderServiceImpl implements OrderService {
     private RedisTemplate<String, Object> redisTemplate;
 
     @Override
-    public void seckill(User user, GoodsVo goods) {
+    public long seckill(User user, GoodsVo goods) {
         Long userId = user.getId();
         Long goodsId = goods.getId();
 
@@ -52,13 +52,10 @@ public class OrderServiceImpl implements OrderService {
 
         try {
             // ==================== 分布式锁：防重复下单的最后一道铁闸 ====================
-            // 在多服务器集群下，JVM 的 synchronized 只能锁住本机线程；
-            // Redisson 基于 Redis 实现的 RLock 能让所有服务器共享同一把锁。
-            // tryLock(等待5秒, 锁30秒后自动释放) — 防止死锁
             if (!lock.tryLock(5, 30, TimeUnit.SECONDS)) {
                 log.warn("[分布式锁] 获取锁失败，疑似并发冲突 userId={}, goodsId={}", userId, goodsId);
                 redisTemplate.opsForValue().set(resultKey, -1, 120, TimeUnit.SECONDS);
-                return;
+                return -1;
             }
 
             // ==================== 1. MySQL 真实库存兜底检查 ====================
@@ -67,11 +64,10 @@ public class OrderServiceImpl implements OrderService {
                 log.warn("[下单失败] MySQL库存不足 goodsId={}, stock={}",
                         goodsId, dbGoods != null ? dbGoods.getGoodsStock() : "null");
                 redisTemplate.opsForValue().set(resultKey, -1, 120, TimeUnit.SECONDS);
-                return;
+                return -1;
             }
 
             // ==================== 2. 防重复下单 ====================
-            // 每个用户对每个秒杀商品只能购买一次
             LambdaQueryWrapper<SeckillOrder> queryWrapper = new LambdaQueryWrapper<>();
             queryWrapper.eq(SeckillOrder::getUserId, userId)
                        .eq(SeckillOrder::getGoodsId, goodsId)
@@ -80,9 +76,8 @@ public class OrderServiceImpl implements OrderService {
             SeckillOrder existOrder = seckillOrderMapper.selectOne(queryWrapper);
             if (existOrder != null) {
                 log.warn("[下单失败] 重复下单 userId={}, goodsId={}, 已有订单号={}", userId, goodsId, existOrder.getId());
-                // 返回已有订单 ID（正数），前端可据此展示"已购买"
                 redisTemplate.opsForValue().set(resultKey, existOrder.getId(), 300, TimeUnit.SECONDS);
-                return;
+                return existOrder.getId();
             }
 
             // ==================== 3. 扣减 MySQL 库存（行锁保证原子性） ====================
@@ -94,7 +89,7 @@ public class OrderServiceImpl implements OrderService {
             if (rows <= 0) {
                 log.warn("[下单失败] MySQL库存扣减失败 goodsId={}", goodsId);
                 redisTemplate.opsForValue().set(resultKey, -1, 120, TimeUnit.SECONDS);
-                return;
+                return -1;
             }
 
             // ==================== 4. 查询秒杀价格 ====================
@@ -115,16 +110,17 @@ public class OrderServiceImpl implements OrderService {
             seckillOrderMapper.insert(order);
 
             // ==================== 6. 写成功结果到 Redis ====================
-            // orderId > 0 → 前端收到后跳转支付页
             redisTemplate.opsForValue().set(resultKey, order.getId(), 300, TimeUnit.SECONDS);
             log.info("✅ [下单成功] orderId={}, userId={}, goodsId={}, price={}",
                     order.getId(), userId, goodsId, seckillPrice);
 
+            return order.getId();
+
         } catch (Exception e) {
             log.error("[下单异常] userId={}, goodsId={}", userId, goodsId, e);
             redisTemplate.opsForValue().set(resultKey, -1, 120, TimeUnit.SECONDS);
+            return -1;
         } finally {
-            // 释放锁（必须判断当前线程是否持有锁）
             if (lock.isHeldByCurrentThread()) {
                 lock.unlock();
             }

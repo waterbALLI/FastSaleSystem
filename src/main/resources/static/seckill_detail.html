@@ -142,6 +142,7 @@
             <a :class="{active:page==='home'}" @click="page='home'">秒杀商品</a>
             <a v-if="user" :class="{active:page==='profile'}" @click="page='profile'">我的账户</a>
             <a v-if="user" :class="{active:page==='orders'}" @click="page='orders'">我的订单</a>
+            <a href="/admin.html" target="_blank" style="font-size:11px;color:#bbb;">⚙ 管理</a>
         </nav>
         <div class="header-right">
             <template v-if="user">
@@ -432,25 +433,41 @@
             const page = ref('home');
 
             // ── Countdown ──
-            const saleStart = ref(Date.now()+5000);
+            const saleStart = ref(null);  // 活动开始时间（从 API 获取）
+            const saleEnd = ref(null);    // 活动结束时间
+            const activityStatus = ref(-1); // -1=加载中 0=未开始 1=进行中 2=已结束
             const hh=ref('00'), mm=ref('00'), ss=ref('00');
             let cdTimer=null;
-            // 用 ref 而非 computed，因为 Date.now() 不是响应式的
-            const countdownLabel = ref('距离开抢');
-            const saleStarted = ref(false);
+            const countdownLabel = ref('加载中...');
             const tick = () => {
-                const d = Math.max(0, saleStart.value-Date.now());
-                if(d<=0){
-                    saleStarted.value = true;
-                    countdownLabel.value = '秒杀进行中 🔥';
-                    clearInterval(cdTimer);
-                    hh.value='00'; mm.value='00'; ss.value='00';
+                if (!saleStart.value || !saleEnd.value) {
+                    countdownLabel.value = '加载活动信息...';
                     return;
                 }
-                const t=Math.floor(d/1000);
-                hh.value=String(Math.floor(t/3600)).padStart(2,'0');
-                mm.value=String(Math.floor((t%3600)/60)).padStart(2,'0');
-                ss.value=String(t%60).padStart(2,'0');
+                const now = Date.now();
+                const startMs = new Date(saleStart.value).getTime();
+                const endMs = new Date(saleEnd.value).getTime();
+
+                if (now < startMs) {
+                    // 未开始 → 倒计时
+                    activityStatus.value = 0;
+                    countdownLabel.value = '距离开抢';
+                    const d = startMs - now;
+                    const t = Math.floor(d / 1000);
+                    hh.value = String(Math.floor(t / 3600)).padStart(2, '0');
+                    mm.value = String(Math.floor((t % 3600) / 60)).padStart(2, '0');
+                    ss.value = String(t % 60).padStart(2, '0');
+                } else if (now < endMs) {
+                    // 进行中
+                    activityStatus.value = 1;
+                    countdownLabel.value = '秒杀进行中 🔥';
+                    hh.value = '00'; mm.value = '00'; ss.value = '00';
+                } else {
+                    // 已结束
+                    activityStatus.value = 2;
+                    countdownLabel.value = '秒杀已结束';
+                    hh.value = '00'; mm.value = '00'; ss.value = '00';
+                }
             };
 
             // ── Goods ──
@@ -459,9 +476,16 @@
                 try {
                     const r = await api.get('/goods/list');
                     if(r.data.code===200) {
+                        const list = r.data.data || [];
+                        // 从第一个商品的活动时间设置倒计时
+                        if (list.length > 0 && list[0].activityStartTime) {
+                            saleStart.value = list[0].activityStartTime;
+                            saleEnd.value = list[0].activityEndTime;
+                            tick(); // 立即计算状态
+                        }
                         // 交叉比对已有订单，标记已购买的商品
                         const boughtIds = new Set(orders.value.map(o=>o.goodsId));
-                        goodsList.value=(r.data.data||[]).map(g=>({
+                        goodsList.value=list.map(g=>({
                             ...g,
                             _state: boughtIds.has(g.id) ? 'bought' : 'ready'
                         }));
@@ -491,19 +515,20 @@
             };
             const stockCls = g => { const p=stockPct(g); return p>50?'high':p>20?'mid':'low'; };
             const canBuy = g => {
-                if(!user.value||!saleStarted.value) return false;
+                if(!user.value || activityStatus.value !== 1) return false;
                 if(g._state==='queuing'||g._state==='soldout'||g._state==='bought') return false;
                 return (g.stockCount||0)>0;
             };
             const btnCls = g => {
-                if(!user.value||!saleStarted.value) return 'buy-pending';
+                if(!user.value || activityStatus.value !== 1) return 'buy-pending';
                 if(g._state==='queuing') return 'buy-queuing';
                 if(g._state==='soldout'||g._state==='bought'||(g.stockCount||0)<=0) return 'buy-soldout';
                 return 'buy-able';
             };
             const btnLbl = g => {
                 if(!user.value) return '请先登录';
-                if(!saleStarted.value) return '即将开抢';
+                if(activityStatus.value === 0) return '即将开抢';
+                if(activityStatus.value === 2) return '已结束';
                 if(g._state==='bought') return '已购买 ✓';
                 if(g._state==='queuing') return '排队中...';
                 if(g._state==='soldout'||(g.stockCount||0)<=0) return '已售罄';
@@ -565,7 +590,7 @@
                 user,token,showLogin,showRegister,authLoading,loginForm,regForm,
                 doLogin,doRegister,doLogout,
                 page,
-                hh,mm,ss,countdownLabel,saleStarted,
+                hh,mm,ss,countdownLabel,activityStatus,
                 goodsList,loading,
                 orders,ordersLoading,
                 fmt,discountPct,stockPct,stockCls,canBuy,btnCls,btnLbl,

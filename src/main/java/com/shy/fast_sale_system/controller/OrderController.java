@@ -5,15 +5,19 @@ import com.shy.fast_sale_system.common.Result;
 import com.shy.fast_sale_system.pojo.User;
 import com.shy.fast_sale_system.rabbitmq.MQSender;
 import com.shy.fast_sale_system.rabbitmq.SeckillMessage;
+import com.shy.fast_sale_system.service.ActivityService;
 import com.shy.fast_sale_system.service.GoodsService;
 import com.shy.fast_sale_system.service.OrderService;
 import com.shy.fast_sale_system.service.UserService;
 import com.shy.fast_sale_system.vo.GoodsVo;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Collections;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -38,6 +42,17 @@ public class OrderController {
 
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;
+
+    @Autowired
+    private ActivityService activityService;
+
+    // ==================== 限流 Lua 脚本（固定窗口计数器） ====================
+    private static final DefaultRedisScript<Long> RATE_LIMIT_SCRIPT;
+    static {
+        RATE_LIMIT_SCRIPT = new DefaultRedisScript<>();
+        RATE_LIMIT_SCRIPT.setLocation(new ClassPathResource("rate_limit.lua"));
+        RATE_LIMIT_SCRIPT.setResultType(Long.class);
+    }
 
     // key = 商品ID, value = true 代表已售罄
     private final Map<Long, Boolean> localOverMap = new ConcurrentHashMap<>();
@@ -111,6 +126,40 @@ public class OrderController {
         }
         redisTemplate.delete(pathKey);
         log.info("[路径校验通过] path={} 已消费", path);
+
+        // ==================== 第一道新增防线：时间窗口校验 ====================
+        GoodsVo goodsVo = goodsService.getGoodsVoByGoodsId(goodsId);
+        if (goodsVo == null) {
+            return Result.error("商品不存在");
+        }
+        if (goodsVo.getActivityId() != null && !activityService.isInTimeWindow(goodsVo.getActivityId())) {
+            Integer status = goodsVo.getActivityStatus();
+            String hint = status != null && status == 0 ? "秒杀活动尚未开始，请耐心等待！"
+                        : status != null && status == 2 ? "秒杀活动已结束！"
+                        : "当前不在秒杀时间窗口内";
+            log.warn(">>> [时间窗口拦截] userId={}, goodsId={}, activityId={}, status={}",
+                    userId, goodsId, goodsVo.getActivityId(), status);
+            return Result.<Integer>error(hint);
+        }
+
+        // ==================== 第二道新增防线：限流（固定窗口计数器） ====================
+        String rateLimitKey = "rate:limit:" + userId + ":" + goodsId;
+        Long rateResult = redisTemplate.execute(RATE_LIMIT_SCRIPT,
+                Collections.singletonList(rateLimitKey), 5, 1);
+        if (rateResult == null || rateResult == 0) {
+            log.warn(">>> [限流拦截] userId={}, goodsId={} 请求过于频繁", userId, goodsId);
+            return Result.<Integer>error("请求过于频繁，请稍后重试！[限流拦截]");
+        }
+
+        // ==================== 第三道新增防线：一人一单 Redis 前置过滤 ====================
+        String userSetKey = "seckill:users:" + goodsId;
+        Long added = redisTemplate.opsForSet().add(userSetKey, userId);
+        if (added != null && added == 0) {
+            log.warn(">>> [一人一单拦截] userId={} 已抢购过 goodsId={}", userId, goodsId);
+            return Result.<Integer>error("您已经参与过该商品的秒杀，每人限购一次！[防重拦截]");
+        }
+        // 设置过期时间 24 小时，避免 Redis 内存泄漏
+        redisTemplate.expire(userSetKey, 24, TimeUnit.HOURS);
 
         // 本地内存售罄标记
         Boolean isOver = localOverMap.get(goodsId);
@@ -205,10 +254,16 @@ public class OrderController {
         return Result.error("未知结果=" + value);
     }
 
-    // ==================== 工具方法（供 DataInitializer 调用） ====================
+    // ==================== 工具方法（供 DataInitializer / rollback 调用） ====================
 
     public void initSoldOutMarker(Long goodsId, boolean isOver) {
         localOverMap.put(goodsId, isOver);
         log.info("[内存标记初始化] goodsId={}, isOver={}", goodsId, isOver);
+    }
+
+    /** 清除本地售罄标记（库存回补时调用） */
+    public void clearSoldOutMarker(Long goodsId) {
+        localOverMap.remove(goodsId);
+        log.info("[内存标记清除] goodsId={} 售罄标记已移除，供回补后重试", goodsId);
     }
 }

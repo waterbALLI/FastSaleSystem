@@ -4,8 +4,10 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.shy.fast_sale_system.mapper.GoodsMapper;
 import com.shy.fast_sale_system.mapper.SeckillGoodsMapper;
+import com.shy.fast_sale_system.pojo.Activity;
 import com.shy.fast_sale_system.pojo.Goods;
 import com.shy.fast_sale_system.pojo.SeckillGoods;
+import com.shy.fast_sale_system.service.ActivityService;
 import com.shy.fast_sale_system.service.GoodsService;
 import com.shy.fast_sale_system.vo.GoodsVo;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,6 +16,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -30,7 +33,10 @@ public class GoodsServiceImpl implements GoodsService {
 
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;
-//用于操作分布式的缓存，那什么是分布式的缓存呢？
+
+    @Autowired
+    private ActivityService activityService;
+
     // 定义本地缓存：最大容量1000，写入后1分钟过期
     private Cache<Long, Goods> localCache = Caffeine.newBuilder()
             .initialCapacity(100)
@@ -115,6 +121,26 @@ public class GoodsServiceImpl implements GoodsService {
                         .eq(SeckillGoods::getGoodsId, goodsId));
         vo.setSeckillPrice(sg != null ? sg.getSeckillPrice() : goods.getGoodsPrice());
 
+        // 填充活动信息
+        if (sg != null) {
+            vo.setActivityId(sg.getActivityId());
+            vo.setSeckillStock(sg.getSeckillStock());
+            vo.setLimitPerUser(sg.getLimitPerUser());
+            Activity activity = activityService.getActivityById(sg.getActivityId());
+            if (activity != null) {
+                vo.setActivityStartTime(activity.getStartTime());
+                vo.setActivityEndTime(activity.getEndTime());
+                LocalDateTime now = LocalDateTime.now();
+                if (now.isBefore(activity.getStartTime())) {
+                    vo.setActivityStatus(0);
+                } else if (now.isBefore(activity.getEndTime())) {
+                    vo.setActivityStatus(1);
+                } else {
+                    vo.setActivityStatus(2);
+                }
+            }
+        }
+
         return vo;
     }
 
@@ -122,6 +148,7 @@ public class GoodsServiceImpl implements GoodsService {
     public List<GoodsVo> getSeckillList() {
         List<SeckillGoods> sgList = seckillGoodsMapper.selectList(null);
         List<GoodsVo> result = new ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
 
         for (SeckillGoods sg : sgList) {
             Goods goods = getGoodsById(sg.getGoodsId());
@@ -133,9 +160,26 @@ public class GoodsServiceImpl implements GoodsService {
             vo.setGoodsPrice(goods.getGoodsPrice());
             vo.setSeckillPrice(sg.getSeckillPrice());
             vo.setSeckillStock(sg.getSeckillStock());
+            vo.setActivityId(sg.getActivityId());
+            vo.setLimitPerUser(sg.getLimitPerUser());
 
             // Redis 实时库存（兼容多种序列化格式）
             vo.setStockCount(readStockFromRedis("goods:stock:" + sg.getGoodsId(), sg.getSeckillStock()));
+
+            // 填充活动时间信息
+            Activity activity = activityService.getActivityById(sg.getActivityId());
+            if (activity != null) {
+                vo.setActivityStartTime(activity.getStartTime());
+                vo.setActivityEndTime(activity.getEndTime());
+                // 实时计算活动状态
+                if (now.isBefore(activity.getStartTime())) {
+                    vo.setActivityStatus(0); // 未开始
+                } else if (now.isBefore(activity.getEndTime())) {
+                    vo.setActivityStatus(1); // 进行中
+                } else {
+                    vo.setActivityStatus(2); // 已结束
+                }
+            }
 
             result.add(vo);
         }
@@ -152,5 +196,12 @@ public class GoodsServiceImpl implements GoodsService {
 
         // 如果返回值 >= 0，说明 Redis 预扣库存成功
         return result != null && result >= 0;
+    }
+
+    @Override
+    public void rollbackStock(Long goodsId) {
+        String redisKey = "goods:stock:" + goodsId;
+        Long newStock = redisTemplate.opsForValue().increment(redisKey, 1);
+        log.info("[库存回补] goodsId={}, Redis stock incrby 1, 新库存={}", goodsId, newStock);
     }
 }

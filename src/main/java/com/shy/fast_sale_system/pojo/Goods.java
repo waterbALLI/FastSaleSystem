@@ -1,4 +1,5 @@
 package com.shy.fast_sale_system.pojo;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -15,9 +16,15 @@ public class Goods {
 
     private Double goodsPrice;  // 对应数据库的 goods_price
 
+    @TableField("goods_title")
+    private String goodsTitle;
 
+    @TableField("goods_img")
+    private String goodsImg;
 
+    @TableField("goods_detail")
+    private String goodsDetail;
 
-
-
+    @TableField("is_deleted")
+    private Integer isDeleted;
 }
