@@ -116,7 +116,7 @@ public class GoodsServiceImpl implements GoodsService {
     @Override
     public GoodsVo getGoodsVoByGoodsId(Long goodsId) {
         Goods goods = getGoodsById(goodsId);
-        if (goods == null) {
+        if (goods == null || (goods.getIsDeleted() != null && goods.getIsDeleted() == 1)) {
             return null;
         }
         GoodsVo vo = new GoodsVo();
@@ -183,6 +183,8 @@ public class GoodsServiceImpl implements GoodsService {
         for (SeckillGoods sg : sgList) {
             Goods goods = getGoodsById(sg.getGoodsId());
             if (goods == null) continue;
+            // 过滤已逻辑删除的商品
+            if (goods.getIsDeleted() != null && goods.getIsDeleted() == 1) continue;
 
             GoodsVo vo = new GoodsVo();
             vo.setId(goods.getId());
@@ -198,17 +200,17 @@ public class GoodsServiceImpl implements GoodsService {
 
             // 填充活动时间信息
             Activity activity = activityService.getActivityById(sg.getActivityId());
-            if (activity != null) {
-                vo.setActivityStartTime(activity.getStartTime());
-                vo.setActivityEndTime(activity.getEndTime());
-                // 实时计算活动状态
-                if (now.isBefore(activity.getStartTime())) {
-                    vo.setActivityStatus(0); // 未开始
-                } else if (now.isBefore(activity.getEndTime())) {
-                    vo.setActivityStatus(1); // 进行中
-                } else {
-                    vo.setActivityStatus(2); // 已结束
-                }
+            if (activity == null) continue;
+            // 过滤已结束的活动
+            if (activity.getEndTime() != null && now.isAfter(activity.getEndTime())) continue;
+
+            vo.setActivityStartTime(activity.getStartTime());
+            vo.setActivityEndTime(activity.getEndTime());
+            // 实时计算活动状态
+            if (now.isBefore(activity.getStartTime())) {
+                vo.setActivityStatus(0);
+            } else {
+                vo.setActivityStatus(1);
             }
 
             result.add(vo);

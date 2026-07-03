@@ -2,8 +2,8 @@ package com.shy.fast_sale_system.controller;
 
 import com.shy.fast_sale_system.common.AuthContext;
 import com.shy.fast_sale_system.common.Result;
-import com.shy.fast_sale_system.pojo.SeckillOrder;
 import com.shy.fast_sale_system.pojo.User;
+import com.shy.fast_sale_system.vo.OrderVo;
 import com.shy.fast_sale_system.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -87,7 +87,7 @@ public class AuthController {
 
     /** 当前用户秒杀订单 */
     @GetMapping("/orders")
-    public Result<List<SeckillOrder>> getOrders() {
+    public Result<List<OrderVo>> getOrders() {
         Long userId = AuthContext.getUserId();
         if (userId == null) {
             return Result.error("未登录");

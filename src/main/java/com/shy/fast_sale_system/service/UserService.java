@@ -1,7 +1,7 @@
 package com.shy.fast_sale_system.service;
 
-import com.shy.fast_sale_system.pojo.SeckillOrder;
 import com.shy.fast_sale_system.pojo.User;
+import com.shy.fast_sale_system.vo.OrderVo;
 
 import java.util.List;
 
@@ -15,6 +15,6 @@ public interface UserService {
     /** 根据 ID 查用户 */
     User getById(Long userId);
 
-    /** 查用户秒杀订单 */
-    List<SeckillOrder> getOrders(Long userId);
+    /** 查用户秒杀订单（含用户名、商品名、活动名） */
+    List<OrderVo> getOrders(Long userId);
 }

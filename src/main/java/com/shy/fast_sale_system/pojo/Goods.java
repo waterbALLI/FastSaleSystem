@@ -2,12 +2,14 @@ package com.shy.fast_sale_system.pojo;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 
 @Data
 @TableName("t_goods") // 告诉 MyBatis-Plus，这个类对应数据库里的 t_goods 表
 public class Goods {
     @TableId // 标记 id 为主键
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
     private Long id;
 
     private String goodsName;  // 对应数据库的 goods_name

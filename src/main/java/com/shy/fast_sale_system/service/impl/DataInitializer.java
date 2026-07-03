@@ -72,8 +72,8 @@ public class DataInitializer implements CommandLineRunner {
             int currentStock = stockObj instanceof Integer ? (Integer) stockObj : 0;
             orderController.initSoldOutMarker(sg.getGoodsId(), currentStock <= 0);
 
-            // 2d. 预热用户集合过期时间
-            String userSetKey = "seckill:users:" + sg.getGoodsId();
+            // 2d. 预热用户集合过期时间（绑定活动）
+            String userSetKey = "seckill:users:" + sg.getActivityId() + ":" + sg.getGoodsId();
             redisTemplate.expire(userSetKey, 24, TimeUnit.HOURS);
         }
         System.out.println("========== [秒杀系统] 启动预热完成！共处理 " + seckillGoodsList.size() + " 个秒杀商品 ==========");

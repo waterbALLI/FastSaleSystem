@@ -68,8 +68,8 @@ public class OrderExpireService {
                 String stockKey = "goods:stock:" + order.getGoodsId();
                 redisTemplate.opsForValue().increment(stockKey, 1);
 
-                // 4. 清除用户秒杀标记（允许重新购买）
-                String userSetKey = "seckill:users:" + order.getGoodsId();
+                // 4. 清除用户秒杀标记（绑定活动，允许重新购买）
+                String userSetKey = "seckill:users:" + order.getActivityId() + ":" + order.getGoodsId();
                 redisTemplate.opsForSet().remove(userSetKey, order.getUserId());
 
                 // 5. 通知前端

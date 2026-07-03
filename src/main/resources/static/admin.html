@@ -40,7 +40,6 @@
         <nav>
             <a :class="{active:tab==='goods'}" @click="tab='goods'">商品管理</a>
             <a :class="{active:tab==='activities'}" @click="tab='activities'">活动管理</a>
-            <a :class="{active:tab==='seckill'}" @click="tab='seckill'">秒杀商品</a>
             <a :class="{active:tab==='orders'}" @click="tab='orders'">订单管理</a>
             <a :class="{active:tab==='reviews'}" @click="tab='reviews'">评论管理</a>
             <a :class="{active:tab==='metrics'}" @click="tab='metrics'">监控指标</a>
@@ -135,41 +134,15 @@
             </div>
         </template>
 
-        <!-- Tab: Seckill Goods -->
-        <template v-if="authed && tab==='seckill'">
-            <div class="card">
-                <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <h3 style="margin-bottom:0;">⚡ 秒杀商品配置</h3>
-                    <el-button type="danger" size="small" @click="openSeckillDialog(null)">+ 新增配置</el-button>
-                </div>
-                <el-table :data="seckillList" style="width:100%;margin-top:16px;" v-loading="sgLoading">
-                    <el-table-column prop="id" label="ID" width="60" />
-                    <el-table-column prop="goodsId" label="商品ID" width="80" />
-                    <el-table-column prop="activityId" label="活动ID" width="80" />
-                    <el-table-column label="秒杀价" width="80">
-                        <template #default="s">¥{{ s.row.seckillPrice }}</template>
-                    </el-table-column>
-                    <el-table-column prop="seckillStock" label="秒杀库存" width="80" />
-                    <el-table-column prop="limitPerUser" label="限购" width="60" />
-                    <el-table-column label="操作" width="140">
-                        <template #default="s">
-                            <el-button size="small" @click="openSeckillDialog(s.row)">编辑</el-button>
-                            <el-button size="small" type="danger" @click="deleteSeckill(s.row.id)">删除</el-button>
-                        </template>
-                    </el-table-column>
-                </el-table>
-            </div>
-        </template>
-
         <!-- Tab: Orders -->
         <template v-if="authed && tab==='orders'">
             <div class="card">
                 <h3>📋 订单管理</h3>
                 <el-table :data="orderPage.records" style="width:100%;" v-loading="orderLoading">
-                    <el-table-column prop="id" label="订单号" width="80" />
-                    <el-table-column prop="userId" label="用户ID" width="80" />
-                    <el-table-column prop="goodsId" label="商品ID" width="80" />
-                    <el-table-column prop="activityId" label="活动ID" width="80" />
+                    <el-table-column prop="id" label="订单号" width="100" />
+                    <el-table-column prop="userName" label="用户" width="80" />
+                    <el-table-column prop="goodsName" label="商品" width="120" />
+                    <el-table-column prop="activityName" label="活动" width="100" />
                     <el-table-column label="金额" width="90">
                         <template #default="s">¥{{ s.row.seckillPrice }}</template>
                     </el-table-column>
@@ -299,47 +272,44 @@
         </template>
     </el-dialog>
 
-    <!-- === Activity Dialog === -->
-    <el-dialog v-model="showActDlg" :title="editingAct.id?'编辑活动':'新增活动'" width="500px" append-to-body>
+    <!-- === Activity Dialog (含秒杀商品配置) === -->
+    <el-dialog v-model="showActDlg" :title="editingAct.id?'编辑活动':'新增活动'" width="680px" append-to-body>
         <el-form :model="editingAct" label-position="top">
             <el-form-item label="活动名称">
                 <el-input v-model="editingAct.activityName" />
             </el-form-item>
-            <el-form-item label="开始时间">
-                <el-date-picker v-model="editingAct.startTime" type="datetime" placeholder="选择开始时间" style="width:100%;" />
-            </el-form-item>
-            <el-form-item label="结束时间">
-                <el-date-picker v-model="editingAct.endTime" type="datetime" placeholder="选择结束时间" style="width:100%;" />
-            </el-form-item>
+            <el-row :gutter="16">
+                <el-col :span="12">
+                    <el-form-item label="开始时间">
+                        <el-date-picker v-model="editingAct.startTime" type="datetime" placeholder="选择开始时间" style="width:100%;" />
+                    </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                    <el-form-item label="结束时间">
+                        <el-date-picker v-model="editingAct.endTime" type="datetime" placeholder="选择结束时间" style="width:100%;" />
+                    </el-form-item>
+                </el-col>
+            </el-row>
         </el-form>
+        <!-- 秒杀商品区域 -->
+        <el-divider content-position="left">⚡ 秒杀商品</el-divider>
+        <div v-if="actSgList.length===0" style="text-align:center;color:#bbb;padding:16px;font-size:13px;">暂未添加秒杀商品</div>
+        <div v-for="(sg,i) in actSgList" :key="i" style="display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid #f0f0f0;">
+            <span style="min-width:100px;font-size:12px;font-weight:600;">{{ sg._goodsName || '商品#'+sg.goodsId }}</span>
+            <el-input-number v-model="sg.seckillPrice" :min="0" :precision="2" size="small" placeholder="秒杀价" style="width:100px;" />
+            <el-input-number v-model="sg.seckillStock" :min="0" size="small" placeholder="库存" style="width:80px;" />
+            <el-input-number v-model="sg.limitPerUser" :min="1" size="small" placeholder="限购" style="width:70px;" />
+            <el-button size="small" type="danger" @click="actSgList.splice(i,1)">删除</el-button>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;">
+            <el-select v-model="actNewGoodsId" placeholder="选择商品" size="small" style="flex:1;" filterable>
+                <el-option v-for="g in allGoodsList" :key="g.id" :label="g.goodsName+' (¥'+g.goodsPrice+')'" :value="g.id" />
+            </el-select>
+            <el-button size="small" type="primary" @click="addGoodsToActivity" :disabled="!actNewGoodsId">添加</el-button>
+        </div>
         <template #footer>
             <el-button @click="showActDlg=false">取消</el-button>
-            <el-button type="danger" @click="saveActivity">保存</el-button>
-        </template>
-    </el-dialog>
-
-    <!-- === Seckill Goods Dialog === -->
-    <el-dialog v-model="showSgDlg" :title="editingSg.id?'编辑秒杀商品':'新增秒杀商品'" width="500px" append-to-body>
-        <el-form :model="editingSg" label-position="top">
-            <el-form-item label="商品ID">
-                <el-input-number v-model="editingSg.goodsId" :min="1" style="width:100%;" />
-            </el-form-item>
-            <el-form-item label="活动ID">
-                <el-input-number v-model="editingSg.activityId" :min="1" style="width:100%;" />
-            </el-form-item>
-            <el-form-item label="秒杀价">
-                <el-input-number v-model="editingSg.seckillPrice" :min="0" :precision="2" style="width:100%;" />
-            </el-form-item>
-            <el-form-item label="秒杀库存">
-                <el-input-number v-model="editingSg.seckillStock" :min="0" style="width:100%;" />
-            </el-form-item>
-            <el-form-item label="每人限购">
-                <el-input-number v-model="editingSg.limitPerUser" :min="1" style="width:100%;" />
-            </el-form-item>
-        </el-form>
-        <template #footer>
-            <el-button @click="showSgDlg=false">取消</el-button>
-            <el-button type="danger" @click="saveSeckill">保存</el-button>
+            <el-button type="danger" @click="saveActivityFull">保存并预热</el-button>
         </template>
     </el-dialog>
 </div>
@@ -376,6 +346,14 @@
             if (saved) { adminToken.value = saved; authed.value = true; }
 
             const authHeaders = () => ({ Authorization: 'Bearer ' + adminToken.value });
+
+            // Date → "yyyy-MM-dd HH:mm:ss" 本地时间字符串（防止 JSON 转 UTC 丢 8 小时）
+            const toLocalStr = d => {
+                if (!d) return null;
+                const dt = new Date(d);
+                const pad = n => String(n).padStart(2, '0');
+                return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
+            };
 
             const tab = ref('goods');
 
@@ -419,59 +397,85 @@
                 try { const r = await api.get('/admin/activities', { headers: authHeaders() }); if (r.data.code === 200) activityList.value = r.data.data; }
                 catch {} finally { actLoading.value = false; }
             };
-            const openActivityDialog = (row) => {
+            // All goods for dropdown
+            const allGoodsList = ref([]);
+            const loadAllGoods = async () => {
+                try { const r = await api.get('/admin/goods', { headers: authHeaders() }); if (r.data.code === 200) allGoodsList.value = r.data.data; } catch {}
+            };
+
+            // Activity dialog with seckill goods
+            const actSgList = ref([]);
+            const actNewGoodsId = ref(null);
+
+            const openActivityDialog = async (row) => {
                 editingAct.value = row ? { ...row } : { activityName: '', startTime: null, endTime: null };
+                actSgList.value = [];
+                actNewGoodsId.value = null;
+                if (row && row.id) {
+                    // Load existing seckill goods for this activity
+                    try {
+                        const r = await api.get('/admin/activities/' + row.id + '/goods', { headers: authHeaders() });
+                        if (r.data.code === 200) {
+                            const list = r.data.data || [];
+                            // Attach goods names
+                            list.forEach(sg => {
+                                const g = allGoodsList.value.find(x => x.id == sg.goodsId);
+                                sg._goodsName = g ? g.goodsName : ('商品#' + sg.goodsId);
+                            });
+                            actSgList.value = list;
+                        }
+                    } catch {}
+                }
                 showActDlg.value = true;
             };
-            const saveActivity = async () => {
+
+            const addGoodsToActivity = () => {
+                const gid = actNewGoodsId.value;
+                if (!gid || actSgList.value.some(sg => sg.goodsId == gid)) return;
+                const g = allGoodsList.value.find(x => x.id == gid);
+                actSgList.value.push({ goodsId: gid, seckillPrice: g ? g.goodsPrice : 0, seckillStock: g ? (g.goodsStock || 100) : 100, limitPerUser: 1, _goodsName: g ? g.goodsName : ('商品#' + gid) });
+                actNewGoodsId.value = null;
+            };
+
+            const saveActivityFull = async () => {
                 const a = editingAct.value;
+                // 转换时间为本地格式，防止时区偏移
+                const payload = { ...a, startTime: toLocalStr(a.startTime), endTime: toLocalStr(a.endTime) };
+                // 1. Save activity
                 try {
                     let r;
-                    if (a.id) {
-                        r = await api.put('/admin/activities/' + a.id, a, { headers: authHeaders() });
+                    if (payload.id) {
+                        r = await api.put('/admin/activities/' + payload.id, payload, { headers: authHeaders() });
                     } else {
-                        r = await api.post('/admin/activities', a, { headers: authHeaders() });
+                        r = await api.post('/admin/activities', payload, { headers: authHeaders() });
                     }
-                    if (r.data.code === 200) { showActDlg.value = false; loadActivities(); ElementPlus.ElMessage.success('保存成功'); }
-                    else ElementPlus.ElMessage.error(r.data.message);
-                } catch { ElementPlus.ElMessage.error('保存失败'); }
+                    if (r.data.code !== 200) { ElementPlus.ElMessage.error(r.data.message); return; }
+                    let actId = payload.id || (r.data.data ? r.data.data.id : null);
+                    if (!actId && payload.id) actId = payload.id;
+                    if (!actId) { ElementPlus.ElMessage.error('无法获取活动ID'); return; }
+
+                    // 2. Sync seckill goods
+                    const before = new Set();
+                    try { const rr = await api.get('/admin/activities/' + actId + '/goods', { headers: authHeaders() }); if (rr.data.code === 200) { (rr.data.data||[]).forEach(s => before.add(Number(s.goodsId))); } } catch {}
+                    const after = new Set(actSgList.value.map(s => Number(s.goodsId)));
+
+                    for (const gid of before) { if (!after.has(gid)) { await api.delete('/admin/activities/' + actId + '/goods/' + gid, { headers: authHeaders() }); } }
+                    for (const sg of actSgList.value) {
+                        await api.post('/admin/activities/' + actId + '/goods/' + sg.goodsId, {
+                            seckillPrice: sg.seckillPrice, seckillStock: sg.seckillStock, limitPerUser: sg.limitPerUser
+                        }, { headers: authHeaders() });
+                    }
+
+                    showActDlg.value = false;
+                    loadActivities();
+                    doPreheat();
+                    ElementPlus.ElMessage.success('活动及秒杀商品已保存，正在预热...');
+                } catch (e) { ElementPlus.ElMessage.error('保存失败'); console.error(e); }
             };
             const deleteActivity = async (id) => {
                 try { await ElementPlus.ElMessageBox.confirm('确认删除此活动？', '提示', { type: 'warning' }); }
                 catch { return; }
                 try { const r = await api.delete('/admin/activities/' + id, { headers: authHeaders() }); if (r.data.code === 200) { loadActivities(); ElementPlus.ElMessage.success('已删除'); } }
-                catch { ElementPlus.ElMessage.error('删除失败'); }
-            };
-
-            // Seckill Goods
-            const seckillList = ref([]); const sgLoading = ref(false);
-            const showSgDlg = ref(false); const editingSg = ref({});
-            const loadSeckill = async () => {
-                sgLoading.value = true;
-                try { const r = await api.get('/admin/seckill-goods', { headers: authHeaders() }); if (r.data.code === 200) seckillList.value = r.data.data; }
-                catch {} finally { sgLoading.value = false; }
-            };
-            const openSeckillDialog = (row) => {
-                editingSg.value = row ? { ...row } : { goodsId: null, activityId: null, seckillPrice: 0, seckillStock: 0, limitPerUser: 1 };
-                showSgDlg.value = true;
-            };
-            const saveSeckill = async () => {
-                const sg = editingSg.value;
-                try {
-                    let r;
-                    if (sg.id) {
-                        r = await api.put('/admin/seckill-goods/' + sg.id, sg, { headers: authHeaders() });
-                    } else {
-                        r = await api.post('/admin/seckill-goods', sg, { headers: authHeaders() });
-                    }
-                    if (r.data.code === 200) { showSgDlg.value = false; loadSeckill(); ElementPlus.ElMessage.success('保存成功'); }
-                    else ElementPlus.ElMessage.error(r.data.message);
-                } catch { ElementPlus.ElMessage.error('保存失败'); }
-            };
-            const deleteSeckill = async (id) => {
-                try { await ElementPlus.ElMessageBox.confirm('确认删除？', '提示', { type: 'warning' }); }
-                catch { return; }
-                try { const r = await api.delete('/admin/seckill-goods/' + id, { headers: authHeaders() }); if (r.data.code === 200) { loadSeckill(); ElementPlus.ElMessage.success('已删除'); } }
                 catch { ElementPlus.ElMessage.error('删除失败'); }
             };
 
@@ -534,15 +538,15 @@
             };
 
             const loadAll = () => {
-                loadGoods(); loadActivities(); loadSeckill(); loadOrders(); loadReviews(); loadMetrics(); loadHealth();
+                loadAllGoods(); loadGoods(); loadActivities(); loadOrders(); loadReviews(); loadMetrics(); loadHealth();
             };
             onMounted(() => { if (authed.value) loadAll(); });
 
             return {
                 authed, adminTokenInput, loginLoading, doAdminLogin, tab,
                 goodsList, goodsLoading, showGoodsDlg, editingGoods, openGoodsDialog, saveGoods, deleteGoods,
-                activityList, actLoading, showActDlg, editingAct, openActivityDialog, saveActivity, deleteActivity,
-                seckillList, sgLoading, showSgDlg, editingSg, openSeckillDialog, saveSeckill, deleteSeckill,
+                activityList, actLoading, showActDlg, editingAct, openActivityDialog, deleteActivity,
+                allGoodsList, actSgList, actNewGoodsId, addGoodsToActivity, saveActivityFull,
                 orderPage, orderLoading, orderPageNum, loadOrders,
                 preheating, doPreheat,
                 showImgDlg, imgList, newImgUrl, openImgMgr, doAddImage, doDeleteImage,

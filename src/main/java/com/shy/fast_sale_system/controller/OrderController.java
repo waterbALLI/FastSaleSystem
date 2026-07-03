@@ -151,11 +151,12 @@ public class OrderController {
             return Result.<Integer>error("请求过于频繁，请稍后重试！[限流拦截]");
         }
 
-        // ==================== 第三道新增防线：一人一单 Redis 前置过滤 ====================
-        String userSetKey = "seckill:users:" + goodsId;
+        // ==================== 第三道新增防线：一人一单 Redis 前置过滤（绑定活动） ====================
+        Long activityId = goodsVo.getActivityId();
+        String userSetKey = "seckill:users:" + activityId + ":" + goodsId;
         Long added = redisTemplate.opsForSet().add(userSetKey, userId);
         if (added != null && added == 0) {
-            log.warn(">>> [一人一单拦截] userId={} 已抢购过 goodsId={}", userId, goodsId);
+            log.warn(">>> [一人一单拦截] userId={}, activityId={}, goodsId={}", userId, activityId, goodsId);
             return Result.<Integer>error("您已经参与过该商品的秒杀，每人限购一次！[防重拦截]");
         }
         // 设置过期时间 24 小时，避免 Redis 内存泄漏

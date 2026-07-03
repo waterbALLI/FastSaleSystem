@@ -2,6 +2,7 @@ package com.shy.fast_sale_system.pojo;
 
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -14,15 +15,18 @@ import java.time.LocalDateTime;
 public class Activity {
 
     @TableId
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
     private Long id;
 
     /** 活动名称 */
     private String activityName;
 
     /** 活动开始时间 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "Asia/Shanghai")
     private LocalDateTime startTime;
 
     /** 活动结束时间 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "Asia/Shanghai")
     private LocalDateTime endTime;
 
     /** 0-未开始 1-进行中 2-已结束 */

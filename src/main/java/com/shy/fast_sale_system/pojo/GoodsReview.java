@@ -2,6 +2,7 @@ package com.shy.fast_sale_system.pojo;
 
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -13,6 +14,7 @@ import java.time.LocalDateTime;
 @TableName("t_goods_review")
 public class GoodsReview {
     @TableId
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
     private Long id;
 
     private Long goodsId;

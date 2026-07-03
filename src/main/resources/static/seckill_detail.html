@@ -238,21 +238,9 @@
             <div class="banner">
                 <div class="bn-text">{{ countdownLabel }}</div>
                 <div class="bn-timer">
-                    <template v-if="activityStatus === 0">
-                        <span class="block">{{ hh }}</span><span class="sep">:</span>
-                        <span class="block">{{ mm }}</span><span class="sep">:</span>
-                        <span class="block">{{ ss }}</span>
-                    </template>
-                    <template v-else-if="activityStatus === 1">
-                        <span class="block">{{ endHh }}</span><span class="sep">:</span>
-                        <span class="block">{{ endMm }}</span><span class="sep">:</span>
-                        <span class="block">{{ endSs }}</span>
-                    </template>
-                    <template v-else>
-                        <span class="block">00</span><span class="sep">:</span>
-                        <span class="block">00</span><span class="sep">:</span>
-                        <span class="block">00</span>
-                    </template>
+                    <span class="block">{{ hh }}</span><span class="sep">:</span>
+                    <span class="block">{{ mm }}</span><span class="sep">:</span>
+                    <span class="block">{{ ss }}</span>
                 </div>
             </div>
 
@@ -315,12 +303,12 @@
                 <h3>📋 最近订单</h3>
                 <template v-if="orders.length > 0">
                     <el-table :data="orders.slice(0,5)" style="width:100%">
-                        <el-table-column prop="id" label="订单号" width="100" />
-                        <el-table-column prop="goodsId" label="商品ID" width="80" />
-                        <el-table-column label="金额" width="100">
+                        <el-table-column prop="id" label="订单号" width="110" />
+                        <el-table-column prop="goodsName" label="商品" width="120" />
+                        <el-table-column label="金额" width="80">
                             <template #default="s">¥{{ s.row.seckillPrice }}</template>
                         </el-table-column>
-                        <el-table-column label="状态" width="100">
+                        <el-table-column label="状态" width="80">
                             <template #default="s">
                                 <el-tag :type="s.row.orderStatus===0?'warning':s.row.orderStatus===1?'success':'info'" size="small">
                                     {{ s.row.orderStatus===0?'待支付':s.row.orderStatus===1?'已支付':s.row.orderStatus===2?'已取消':'已退款' }}
@@ -332,7 +320,7 @@
                                 <el-button v-if="s.row.orderStatus===0" size="small" type="danger" @click="doPayOrder(s.row.id)">支付</el-button>
                             </template>
                         </el-table-column>
-                        <el-table-column label="时间">
+                        <el-table-column label="时间" width="140">
                             <template #default="s">{{ s.row.createTime }}</template>
                         </el-table-column>
                     </el-table>
@@ -353,9 +341,9 @@
                 <h3>📋 我的秒杀订单</h3>
                 <template v-if="orders.length > 0">
                     <el-table :data="orders" style="width:100%" v-loading="ordersLoading">
-                        <el-table-column prop="id" label="订单号" width="100" />
-                        <el-table-column prop="goodsId" label="商品ID" width="80" />
-                        <el-table-column prop="activityId" label="活动ID" width="80" />
+                        <el-table-column prop="id" label="订单号" width="110" />
+                        <el-table-column prop="goodsName" label="商品" width="120" />
+                        <el-table-column prop="activityName" label="活动" width="100" />
                         <el-table-column label="秒杀价" width="100">
                             <template #default="s">¥{{ s.row.seckillPrice }}</template>
                         </el-table-column>
@@ -475,6 +463,16 @@
                 </template>
                 <div v-else style="text-align:center;padding:24px;color:#bbb;font-size:13px;">
                     暂无评价，抢购后快来发表第一条评价吧！
+                </div>
+                <!-- Review Form -->
+                <div v-if="user && canReview" style="border-top:1px solid #f0f0f0;margin-top:12px;padding-top:12px;">
+                    <div style="font-size:13px;font-weight:600;margin-bottom:8px;">✍ 发表评价</div>
+                    <div style="display:flex;gap:4px;margin-bottom:8px;">
+                        <span v-for="i in 5" :key="i" style="cursor:pointer;font-size:20px;"
+                              @click="reviewRating=i">{{ i <= reviewRating ? '★' : '☆' }}</span>
+                    </div>
+                    <el-input v-model="reviewContent" type="textarea" :rows="2" placeholder="说说你的使用体验..." />
+                    <el-button size="small" type="danger" style="margin-top:8px;" @click="submitReview" :loading="reviewSubmitting">发表评价</el-button>
                 </div>
             </div>
         </template>
@@ -621,44 +619,80 @@
             const page = ref('home');
 
             // ── Countdown ──
-            const saleStart = ref(null);  // 活动开始时间（从 API 获取）
-            const saleEnd = ref(null);    // 活动结束时间
+            const saleStart = ref(null);  // 倒计时目标：开始时间或结束时间
+            const saleEnd = ref(null);    // 活动结束时间（始终保留）
             const activityStatus = ref(-1); // -1=加载中 0=未开始 1=进行中 2=已结束
             const hh=ref('00'), mm=ref('00'), ss=ref('00');
             let cdTimer=null;
             const countdownLabel = ref('加载中...');
+            let countdownTarget = ref('start'); // 'start' | 'end'
+
             const tick = () => {
-                if (!saleStart.value || !saleEnd.value) {
+                const allGoods = goodsList.value;
+                if (!allGoods || allGoods.length === 0) {
                     countdownLabel.value = '加载活动信息...';
                     return;
                 }
+                // 收集所有唯一活动时间
                 const now = Date.now();
-                const startMs = new Date(saleStart.value).getTime();
-                const endMs = new Date(saleEnd.value).getTime();
+                let bestTarget = null;  // {startMs, endMs}
+                let bestMode = 'none';  // 'upcoming' | 'active' | 'none'
 
-                if (now < startMs) {
-                    // 未开始 → 倒计时
+                for (const g of allGoods) {
+                    if (!g.activityStartTime || !g.activityEndTime) continue;
+                    const sMs = new Date(g.activityStartTime).getTime();
+                    const eMs = new Date(g.activityEndTime).getTime();
+
+                    if (sMs <= now && now < eMs) {
+                        // 有活动正在进行 → 追踪结束时间最近的
+                        if (!bestTarget || eMs < bestTarget.endMs) {
+                            bestTarget = { startMs: sMs, endMs: eMs };
+                            bestMode = 'active';
+                        }
+                    } else if (now < sMs) {
+                        // 活动还未开始 → 追踪开始时间最近的
+                        if (bestMode === 'none' || (bestMode === 'upcoming' && sMs < bestTarget.startMs)) {
+                            bestTarget = { startMs: sMs, endMs: eMs };
+                            bestMode = 'upcoming';
+                        }
+                    }
+                }
+
+                if (!bestTarget) {
+                    activityStatus.value = 2;
+                    countdownLabel.value = '秒杀已结束';
+                    saleStart.value = null; saleEnd.value = null;
+                    hh.value = '00'; mm.value = '00'; ss.value = '00';
+                    endHh.value = '00'; endMm.value = '00'; endSs.value = '00';
+                    return;
+                }
+
+                saleStart.value = new Date(bestTarget.startMs).toISOString();
+                saleEnd.value = new Date(bestTarget.endMs).toISOString();
+
+                if (bestMode === 'upcoming') {
                     activityStatus.value = 0;
                     countdownLabel.value = '距离开抢';
-                    const d = startMs - now;
+                    countdownTarget.value = 'start';
+                    const d = bestTarget.startMs - now;
                     const t = Math.floor(d / 1000);
                     hh.value = String(Math.floor(t / 3600)).padStart(2, '0');
                     mm.value = String(Math.floor((t % 3600) / 60)).padStart(2, '0');
                     ss.value = String(t % 60).padStart(2, '0');
-                } else if (now < endMs) {
-                    // 进行中 → 显示结束倒计时
+                } else if (bestMode === 'active') {
                     activityStatus.value = 1;
                     countdownLabel.value = '距离结束';
-                    hh.value = '00'; mm.value = '00'; ss.value = '00';
-                } else {
-                    // 已结束
-                    activityStatus.value = 2;
-                    countdownLabel.value = '秒杀已结束';
-                    hh.value = '00'; mm.value = '00'; ss.value = '00';
+                    countdownTarget.value = 'end';
+                    const d = bestTarget.endMs - now;
+                    const t = Math.floor(d / 1000);
+                    hh.value = String(Math.floor(t / 3600)).padStart(2, '0');
+                    mm.value = String(Math.floor((t % 3600) / 60)).padStart(2, '0');
+                    ss.value = String(t % 60).padStart(2, '0');
                 }
-                // 同步更新结束倒计时
-                if (saleEnd.value) {
-                    const endDiff = endMs - now;
+
+                // 同步结束倒计时（始终追踪当前选中的结束时间）
+                if (bestTarget) {
+                    const endDiff = bestTarget.endMs - now;
                     if (endDiff > 0) {
                         const et = Math.floor(endDiff / 1000);
                         endHh.value = String(Math.floor(et / 3600)).padStart(2, '0');
@@ -677,13 +711,6 @@
                     const r = await api.get('/goods/list');
                     if(r.data.code===200) {
                         const list = r.data.data || [];
-                        // 从第一个商品的活动时间设置倒计时
-                        if (list.length > 0 && list[0].activityStartTime) {
-                            saleStart.value = list[0].activityStartTime;
-                            saleEnd.value = list[0].activityEndTime;
-                            tick(); // 立即计算状态
-                        }
-                        // 交叉比对已有订单，仅未取消/未退款标记为已购买
                         const boughtIds = new Set(
                             orders.value.filter(o=>o.orderStatus===0||o.orderStatus===1).map(o=>o.goodsId)
                         );
@@ -691,6 +718,7 @@
                             ...g,
                             _state: boughtIds.has(g.id) ? 'bought' : 'ready'
                         }));
+                        tick(); // 根据所有商品的活动时间重新计算倒计时
                     }
                 } catch {} finally { loading.value=false; }
             };
@@ -896,6 +924,33 @@
                 } catch {}
             };
 
+            // Review submission
+            const reviewRating = ref(5); const reviewContent = ref(''); const reviewSubmitting = ref(false);
+            const canReview = computed(() => {
+                if (!detailGoods.value || !user.value) return false;
+                return orders.value.some(o => o.goodsId == detailGoods.value.id && (o.orderStatus === 1 || o.orderStatus === 0));
+            });
+            const submitReview = async () => {
+                if (!reviewContent.value.trim()) return;
+                reviewSubmitting.value = true;
+                try {
+                    const r = await api.post('/goods/review', {
+                        goodsId: detailGoods.value.id, rating: reviewRating.value, content: reviewContent.value.trim()
+                    });
+                    if (r.data.code === 200) {
+                        ElementPlus.ElMessage.success('评价发表成功');
+                        reviewContent.value = '';
+                        reviewRating.value = 5;
+                        // Reload reviews
+                        const rr = await api.get('/goods/reviews', { params: { goodsId: detailGoods.value.id, page: 1, size: 50 } });
+                        if (rr.data.code === 200 && rr.data.data.records) {
+                            detailGoods.value.reviews = rr.data.data.records;
+                        }
+                    } else { ElementPlus.ElMessage.error(r.data.message); }
+                } catch { ElementPlus.ElMessage.error('发表失败'); }
+                finally { reviewSubmitting.value = false; }
+            };
+
             // 结束倒计时
             const endHh = ref('00'), endMm = ref('00'), endSs = ref('00');
 
@@ -920,6 +975,7 @@
                 payOrderId,payCountdown,doPay,doPayOrder,
                 detailGoods,detailImages,carouselIdx,openDetail,carouselPrev,carouselNext,
                 onTouchStart,onTouchEnd,loadMoreReviews,endHh,endMm,endSs,
+                reviewRating,reviewContent,reviewSubmitting,canReview,submitReview,
             };
         }
     }).use(ElementPlus).mount('#app');
